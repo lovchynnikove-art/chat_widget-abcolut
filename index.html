@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>АбсолютМед, стенд чат-віджета</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 "Noto Sans",Roboto,system-ui,sans-serif;color:#1c2430;background:#fff}
+header{display:flex;align-items:center;gap:28px;padding:16px 40px;border-bottom:1px solid #e6e9ee}
+header .logo{font-weight:700;font-size:22px;color:var(--c)}
+header nav a{margin-right:22px;color:#1c2430;text-decoration:none}
+header .tel{margin-left:auto;font-weight:600;color:var(--c)}
+.hero{background:linear-gradient(135deg,var(--c) 0%,#12324a 100%);color:#fff;padding:90px 40px;text-align:center}
+.hero h1{margin:0 0 12px;font-size:40px}
+.hero p{margin:0 0 28px;font-size:18px;opacity:.9}
+.hero a{display:inline-block;background:#e31e24;color:#fff;padding:14px 28px;border-radius:30px;text-decoration:none;font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;padding:40px;max-width:1100px;margin:0 auto}
+.card{border:1px solid #e6e9ee;border-radius:14px;padding:24px}
+.card h3{margin:0 0 8px;color:var(--c)}
+.note{max-width:1100px;margin:0 auto 60px;padding:0 40px;color:#5b6675;font-size:14px}
+.note code{background:#f3f5f8;padding:2px 6px;border-radius:6px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo" id="logo">АБСолют МЕД</div>
+  <nav><a href="#">Головна</a><a href="#">МРТ</a><a href="#">КТ</a><a href="#">Ціни</a><a href="#">Контакти</a></nav>
+  <div class="tel" id="tel">+38 (096) 501-08-08</div>
+</header>
+<section class="hero">
+  <h1>КТ і МРТ у Львові</h1>
+  <p>Стенд для перевірки чат-віджета. Це не сайт клієнта, а імітація сторінки, щоб побачити віджет поверх контенту.</p>
+  <a href="#">Записатися на обстеження</a>
+</section>
+<section class="cards">
+  <div class="card"><h3>МРТ 1,5 Тесла</h3>Львів, вул. Юрія Руфа, 6</div>
+  <div class="card"><h3>МРТ 3 Тесла</h3>Львів, вул. Костя Левицького, 55</div>
+  <div class="card"><h3>КТ</h3>Львів, вул. Юрія Руфа, 6</div>
+  <div class="card"><h3>Чат-віджет</h3>Кнопка внизу праворуч. Заявки з чату йдуть у тестову групу реєстратури.</div>
+</section>
+<div class="note">
+  Кольори стенду: <code>index.html</code> для absolutmed.lviv.ua, <code>index.html?site=mrt3t</code> для mrt3t.lviv.ua.
+  На сайти клієнта ставиться один рядок у футер: <code>&lt;script src="…/widget.js" data-endpoint="…" data-color="#0077b3" data-site="absolutmed.lviv.ua"&gt;&lt;/script&gt;</code>
+</div>
+<script>
+(function () {
+  var mrt3t = /[?&]site=mrt3t/.test(location.search);
+  var color = mrt3t ? '#0055b8' : '#0077b3';
+  var site = mrt3t ? 'mrt3t.lviv.ua' : 'absolutmed.lviv.ua';
+  document.documentElement.style.setProperty('--c', color);
+  if (mrt3t) { document.getElementById('logo').textContent = 'АБСОЛЮТ МРТ 3T'; document.getElementById('tel').textContent = '0 (800) 30-40-40'; }
+  var s = document.createElement('script');
+  s.src = 'widget.js';
+  s.dataset.endpoint = 'https://n8n.businessautomation.space/webhook/absolutmed-chat';
+  s.dataset.color = color;
+  s.dataset.site = site;
+  document.body.appendChild(s);
+})();
+</script>
+</body>
+</html>
