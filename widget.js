@@ -107,6 +107,7 @@
     + '.fld .l{font-size:13.5px;font-weight:600;color:#2b3440;margin-bottom:6px}'
     + '.fld .opt{font-weight:400;color:#9aa4b1;font-size:12px}'
     + '.f input[type=text],.f input[type=tel],.f select{width:100%;border:1.5px solid #d5dae2;border-radius:12px;padding:11px 13px;font:inherit;font-size:15px;background:#fff;outline:none;color:#1c2430;-webkit-appearance:none;appearance:none}'
+    + '.two{display:flex;gap:10px}.two .fld{flex:1;min-width:0}'
     + '.agew{display:flex;align-items:center;gap:10px}.agew input{width:96px!important;text-align:center;font-size:17px!important}.agew span{color:#5b6675;font-size:14px}'
     + '.f select{background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%237a8594%27 stroke-width=%272%27%3E%3Cpath d=%27M6 9l6 6 6-6%27/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px}'
     + '.f input:focus,.f select:focus{border-color:' + COLOR + ';box-shadow:0 0 0 3px rgba(0,0,0,.05)}'
@@ -330,6 +331,10 @@
       + fld('day', 'День', chips('day', DAYS))
       + fld('part', 'Час', chips('part', PARTS), '', true)
       + '<h4>Контакт</h4>'
+      + '<div class="two">'
+      + fld('first_name', 'Ім’я', '<input type="text" name="first_name" autocomplete="given-name" maxlength="40" placeholder="Оксана">')
+      + fld('last_name', 'Прізвище', '<input type="text" name="last_name" autocomplete="family-name" maxlength="40" placeholder="Шевченко">')
+      + '</div>'
       + fld('phone', 'Телефон', '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="+380 __ ___ __ __" maxlength="19">')
       + fld('consent', '', '<label class="chk"><input type="checkbox" name="consent"><span>Погоджуюсь на обробку персональних даних для запису на обстеження</span></label>')
       + '<button type="submit" class="submit">Надіслати заявку</button>'
@@ -429,6 +434,8 @@
     if (c.contrast && !v.gfr) { e.gfr = 'Оберіть варіант'; }
     if (c.referral && !v.referral) { e.referral = 'Є скерування чи немає?'; }
     if (!v.day) { e.day = 'Оберіть день'; }
+    if (!v.first_name) { e.first_name = 'Вкажіть ім’я'; }
+    if (!v.last_name) { e.last_name = 'Вкажіть прізвище'; }
     if (!/^\+380 \d{2} \d{3} \d{2} \d{2}$/.test(v.phone)) { e.phone = 'Введіть повний номер'; }
     if (!v.consent) { e.consent = 'Без згоди заявку надіслати не можна'; }
     if (v.age && +v.age < 18 && c.contrast) { e.contrast = 'Дітям до 18 років обстеження з контрастною речовиною, і КТ, і МРТ, ми не проводимо. Оберіть «Без контрасту», а потребу в контрасті вирішить лікар'; }
@@ -487,6 +494,7 @@
         gfr_status: v.gfr, gfr_old: v.gfr_old, anemia: v.anemia, lactation: v.lactation, pregnancy: v.pregnancy,
         referral: v.referral.toLowerCase(),
         preferred_time: DAY_FULL[v.day] + (v.part ? ', ' + v.part.toLowerCase() : ''),
+        name: v.first_name + ' ' + v.last_name, first_name: v.first_name, last_name: v.last_name,
         phone: v.phone, consent: v.consent
       };
       fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -507,7 +515,7 @@
 
   function renderDone() {
     var d = formDone;
-    var h = '<div class="done"><div class="ok"><b>Дякуємо. Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
+    var h = '<div class="done"><div class="ok"><b>Дякуємо' + (d.name ? ', ' + esc(d.name) : '') + '. Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
     if (d.escalation) { h += '<div class="esc">З цим питанням має розібратися наш лікар. Радіолог зателефонує вам.</div>'; }
     (d.notes || []).forEach(function (n) { h += '<p>' + esc(n) + '</p>'; });
     if ((d.preparation || []).length) { h += '<h4>Підготовка</h4>'; }
