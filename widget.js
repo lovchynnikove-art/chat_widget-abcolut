@@ -143,7 +143,9 @@
     + '.done .ok b{display:block;font-size:16px;margin-bottom:6px;color:' + COLOR + '}'
     + '.done .esc{background:#fff8e6;border:1px solid #f3dfae;color:#6b4e00;border-radius:10px;padding:8px 10px}'
     + '.done p{background:#fff;border-radius:12px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
-    + '@media (max-width:480px){.am{right:0;bottom:0}.launch{margin:0 16px 16px 0}.am-panel{width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0}}';
+    + '@media (max-width:640px){.am{right:0;bottom:0}.launch{margin:0 16px 16px 0}'
+    + '.am .am-panel,.am.fm .am-panel{position:fixed;left:0;top:0;right:0;bottom:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100dvh;border-radius:0;box-shadow:none}'
+    + '.am-head{padding-top:max(14px,env(safe-area-inset-top))}}'
 
   var ICON_CHAT = '<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-6.5A8 8 0 1 1 21 12z"/></svg>';
   var ICON_FORM = '<svg viewBox="0 0 24 24"><path d="M9 5h6M9 3h6v4H9zM5 6h1v15h12V6h1"/><path d="M8 12h8M8 16h5"/></svg>';
@@ -301,7 +303,7 @@
       + '<div class="note103">Якщо це невідкладний стан (ознаки інсульту, тяжка травма, гострий біль у животі, кровотеча), не заповнюйте форму, а телефонуйте 103.</div>'
       + '<h4>Обстеження</h4>'
       + fld('modality', 'Яке обстеження', chips('modality', ['КТ', 'МРТ'], 'seg'))
-      + fld('zone', 'Що обстежуємо', chips('zone_group', ZONE_GROUPS.map(function (g) { return g[0]; })) + '<div class="sub2" data-zone-sub></div>')
+      + fld('zone', 'Що обстежуємо', chips('zone_group', ZONE_GROUPS.map(function (g) { return g[0]; })) + '<div class="sub2" data-zone-sub hidden></div>')
       + fld('apparatus', 'Апарат МРТ', chips('apparatus', ['1,5 Тесла', '3 Тесла'], 'seg') + '<div class="hint">Не впевнені, пропустіть, оператор підбере</div>', 'mri', true)
       + fld('contrast', 'Контраст', chips('contrast', ['З контрастом', 'Без контрасту'], 'seg'))
       + '<h4>Пацієнт</h4>'
