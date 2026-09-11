@@ -51,7 +51,7 @@ header .tel{margin-left:auto;font-weight:600;color:var(--c)}
   document.documentElement.style.setProperty('--c', color);
   if (mrt3t) { document.getElementById('logo').textContent = 'АБСОЛЮТ МРТ 3T'; document.getElementById('tel').textContent = '0 (800) 30-40-40'; }
   var s = document.createElement('script');
-  s.src = 'widget.js';
+  s.src = 'widget.js?v=' + Date.now(); // стенд: без кешу, щоб правки було видно одразу
   s.dataset.endpoint = 'https://n8n.businessautomation.space/webhook/absolutmed-chat';
   s.dataset.color = color;
   s.dataset.site = site;
