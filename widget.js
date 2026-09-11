@@ -114,7 +114,10 @@
     + '.chips button:hover{border-color:' + COLOR + '}'
     + '.chips button.on{border-color:' + COLOR + ';background:' + COLOR + ';color:#fff}'
     + '.chips.seg button{flex:1;min-width:0;border-radius:12px;text-align:center}'
-    + '.sub2{margin-top:8px}'
+    + '.sub2{margin-top:10px;padding:10px 12px 12px;background:#eef3f8;border-left:3px solid ' + COLOR + ';border-radius:0 12px 12px 0}'
+    + '.sub2 .sl{font-size:12px;color:#5b6675;margin:0 0 8px}.sub2 .sl b{color:#1c2430;font-weight:600}'
+    + '.sub2 .chips{gap:6px}.sub2 .chips button{font-size:13px;padding:7px 12px;border-radius:16px;background:#fff;border-color:#c9d3df}'
+    + '.sub2 .chips button.on{background:' + COLOR + ';border-color:' + COLOR + '}'
     + '.swr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:#fff;border:1px solid #e6e9ee;border-radius:12px;cursor:pointer;line-height:1.3}'
     + '.switch{position:relative;flex:none;width:44px;height:26px}'
     + '.switch input{opacity:0;width:0;height:0;position:absolute}'
@@ -384,7 +387,7 @@
     var box = form.querySelector('[data-zone-sub]');
     var g = ZONE_GROUPS.filter(function (x) { return x[0] === group; })[0];
     var items = g ? g[1] : [];
-    box.innerHTML = items.length ? chips('zone_item', items) : '';
+    box.innerHTML = items.length ? '<div class="sl">Оберіть ділянку в групі <b>' + esc(group) + '</b></div>' + chips('zone_item', items) : '';
     box.hidden = !items.length;
   }
   function fillDraft(form, d) {
