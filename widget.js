@@ -106,6 +106,7 @@
     + '.fld .l{font-size:13.5px;font-weight:600;color:#2b3440;margin-bottom:6px}'
     + '.fld .opt{font-weight:400;color:#9aa4b1;font-size:12px}'
     + '.f input[type=text],.f input[type=tel],.f select{width:100%;border:1.5px solid #d5dae2;border-radius:12px;padding:11px 13px;font:inherit;font-size:15px;background:#fff;outline:none;color:#1c2430;-webkit-appearance:none;appearance:none}'
+    + '.agew{display:flex;align-items:center;gap:10px}.agew input{width:96px!important;text-align:center;font-size:17px!important}.agew span{color:#5b6675;font-size:14px}'
     + '.f select{background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%237a8594%27 stroke-width=%272%27%3E%3Cpath d=%27M6 9l6 6 6-6%27/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px}'
     + '.f input:focus,.f select:focus{border-color:' + COLOR + ';box-shadow:0 0 0 3px rgba(0,0,0,.05)}'
     + '.f input::placeholder{color:#a9b2bd}'
@@ -291,11 +292,6 @@
   function swRow(name, label, ifs) {
     return '<label class="swr"' + (ifs ? ' data-if="' + ifs + '"' : '') + '><span>' + label + '</span><span class="switch"><input type="checkbox" name="' + name + '"><i></i></span></label>';
   }
-  function ageOptions() {
-    var h = '<option value="">Оберіть</option>';
-    for (var i = 1; i <= 100; i++) { h += '<option value="' + i + '">' + i + '</option>'; }
-    return h;
-  }
 
   function formHtml() {
     return '<form class="f" novalidate>'
@@ -307,7 +303,7 @@
       + fld('contrast', 'Контраст', chips('contrast', ['З контрастом', 'Без контрасту'], 'seg'))
       + '<h4>Пацієнт</h4>'
       + swRow('for_other', 'Записую іншу людину')
-      + fld('age', 'Повних років', '<select name="age">' + ageOptions() + '</select>')
+      + fld('age', 'Повних років', '<div class="agew"><input type="text" name="age" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="35" autocomplete="off"><span>років</span></div>')
       + fld('weight', 'Вага', chips('weight', ['До 100 кг', '100-120 кг', 'Понад 120 кг'], 'seg'))
       + fld('girth', 'Обхват тіла в найгрубшому місці при опущених руках', chips('girth', ['До 140 см', '140-160 см', 'Понад 160 см'], 'seg'), 'mri')
       + fld('knee', 'Обхват у ділянці коліна', chips('knee', ['До 45 см', '45-59 см', 'Понад 59 см'], 'seg'), 'mri knee')
@@ -424,7 +420,7 @@
     if (!v.modality) { e.modality = 'Оберіть КТ або МРТ'; }
     if (!zoneText(v)) { e.zone = v.zone_group ? 'Оберіть ділянку' : 'Оберіть групу, потім ділянку'; }
     if (!v.contrast) { e.contrast = 'Оберіть, з контрастом чи без'; }
-    if (!v.age) { e.age = 'Оберіть вік'; }
+    if (!v.age) { e.age = 'Вкажіть вік'; } else if (+v.age < 0 || +v.age > 120) { e.age = 'Перевірте вік'; }
     if (!v.weight) { e.weight = 'Оберіть вагу'; }
     if (c.mri && !v.girth) { e.girth = 'Оберіть обхват'; }
     if (c.mri && c.knee && !v.knee) { e.knee = 'Оберіть обхват коліна'; }
@@ -456,6 +452,7 @@
     form.addEventListener('input', function (e) {
       var t = e.target;
       if (t.name === 'phone') { var p = t.selectionEnd === t.value.length; t.value = formatPhone(t.value); }
+      if (t.name === 'age') { t.value = t.value.replace(/\D/g, '').slice(0, 3); }
       var f = t.closest('.fld'); if (f && t.value) { clearErr(f); }
       applyVisibility(form);
     });
