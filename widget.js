@@ -69,6 +69,7 @@
     + '.am-pill svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
     + '.am-panel{position:absolute;right:0;bottom:0;width:380px;max-width:calc(100vw - 40px);height:620px;max-height:calc(100vh - 40px);background:#fff;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:none;flex-direction:column;overflow:hidden}'
     + '.am.open .am-panel{display:flex}'
+    + '.am.fm .am-panel{width:560px;height:860px}'
     + '.am.open .launch{display:none}'
     + '.am-head{background:' + COLOR + ';color:#fff;padding:12px 14px 12px 16px;display:flex;align-items:center;gap:10px}'
     + '.am-head .t{font-weight:600;font-size:16px}'
@@ -190,6 +191,7 @@
   /* ---------- рендер ---------- */
   function render() {
     var isChat = state.mode === 'chat';
+    wrap.classList.toggle('fm', !isChat);
     head.querySelector('.t').textContent = isChat ? TITLE : 'Швидкий запис';
     head.querySelector('.s').textContent = isChat ? 'Оля, віртуальний асистент реєстратури' : 'Заповніть один раз, оператор передзвонить';
     sw.textContent = isChat ? 'Форма запису' : 'Чат з Олею';
