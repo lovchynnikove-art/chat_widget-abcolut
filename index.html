@@ -6,11 +6,12 @@
 <title>АбсолютМед, стенд чат-віджета</title>
 <style>
 *{box-sizing:border-box}
+html,body{max-width:100%;overflow-x:hidden}
 body{margin:0;font:16px/1.5 "Noto Sans",Roboto,system-ui,sans-serif;color:#1c2430;background:#fff}
 header{display:flex;align-items:center;gap:28px;padding:16px 40px;border-bottom:1px solid #e6e9ee}
 header .logo{font-weight:700;font-size:22px;color:var(--c)}
 header nav a{margin-right:22px;color:#1c2430;text-decoration:none}
-header .tel{margin-left:auto;font-weight:600;color:var(--c)}
+header .tel{margin-left:auto;font-weight:600;color:var(--c);white-space:nowrap}
 .hero{background:linear-gradient(135deg,var(--c) 0%,#12324a 100%);color:#fff;padding:90px 40px;text-align:center}
 .hero h1{margin:0 0 12px;font-size:40px}
 .hero p{margin:0 0 28px;font-size:18px;opacity:.9}
@@ -19,7 +20,20 @@ header .tel{margin-left:auto;font-weight:600;color:var(--c)}
 .card{border:1px solid #e6e9ee;border-radius:14px;padding:24px}
 .card h3{margin:0 0 8px;color:var(--c)}
 .note{max-width:1100px;margin:0 auto 60px;padding:0 40px;color:#5b6675;font-size:14px}
-.note code{background:#f3f5f8;padding:2px 6px;border-radius:6px}
+.note code{background:#f3f5f8;padding:2px 6px;border-radius:6px;word-break:break-word}
+@media (max-width:640px){
+  header{flex-wrap:wrap;gap:10px 16px;padding:14px 16px}
+  header .logo{font-size:19px}
+  header nav{order:3;width:100%;display:flex;gap:14px;overflow-x:auto;font-size:14px}
+  header nav a{margin:0;white-space:nowrap}
+  header .tel{font-size:14px}
+  .hero{padding:48px 20px}
+  .hero h1{font-size:28px}
+  .hero p{font-size:15px}
+  .cards{grid-template-columns:1fr;gap:14px;padding:20px 16px}
+  .card{padding:18px}
+  .note{padding:0 16px;margin-bottom:120px}
+}
 </style>
 </head>
 <body>
