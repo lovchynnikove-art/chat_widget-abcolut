@@ -265,13 +265,13 @@
   function saveDraft(v) { try { sessionStorage.setItem(FORM_KEY, JSON.stringify(v)); } catch (e) {} }
 
   var ZONE_GROUPS = [
-    ['Голова', ['Головний мозок', 'Судини головного мозку', 'Гіпофіз', 'Орбіти', 'Пазухи носа', 'Вуха']],
-    ['Хребет', ['Шийний відділ', 'Грудний відділ', 'Поперековий відділ', 'Крижі і куприк', 'Спинний мозок']],
-    ['Суглоби', ['Плечовий суглоб', 'Ліктьовий суглоб', 'Кисть і зап\'ясток', 'Кульшовий суглоб', 'Колінний суглоб', 'Гомілково-ступневий суглоб', 'Стопа']],
-    ['Шия і груди', ['М\'які тканини шиї', 'Судини шиї', 'Органи грудної клітки', 'Грудні залози', 'Серце']],
-    ['Живіт', ['Черевна порожнина', 'Печінка', 'Підшлункова залоза', 'Нирки', 'Наднирники', 'Жовчний міхур', 'Кишківник']],
-    ['Таз', ['Органи малого таза', 'Простата', 'Матка й придатки', 'Сечовий міхур', 'Пряма кишка']],
-    ['Інше', []]
+    ['Голова', ['Головний мозок', 'Гіпофіз', 'Орбіти', 'Пазухи носа', 'Вуха', 'Лицьовий скелет', 'Скронево-щелепні суглоби']],
+    ['Хребет', ['Шийний відділ', 'Грудний відділ', 'Поперековий відділ', 'Крижі і куприк', 'Спинний мозок', 'Увесь хребет']],
+    ['Суглоби', ['Плечовий суглоб', 'Ліктьовий суглоб', 'Кисть і зап’ясток', 'Кульшовий суглоб', 'Колінний суглоб', 'Гомілково-ступневий суглоб', 'Стопа']],
+    ['Шия і груди', ['М’які тканини шиї', 'Органи грудної клітки', 'Грудні залози', 'Серце', 'Грудина і ключиці']],
+    ['Живіт', ['Черевна порожнина', 'Печінка', 'Підшлункова залоза', 'Нирки', 'Наднирники', 'Жовчний міхур і протоки', 'Селезінка', 'Кишківник']],
+    ['Таз', ['Органи малого таза', 'Простата', 'Матка й придатки', 'Сечовий міхур', 'Пряма кишка', 'Кістки таза']],
+    ['Судини', ['Судини головного мозку', 'Судини шиї', 'Аорта', 'Судини ніг', 'Судини нирок', 'Вени']]
   ];
   var DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Будь-який день'];
   var DAY_FULL = { 'Пн': 'понеділок', 'Вт': 'вівторок', 'Ср': 'середа', 'Чт': 'четвер', 'Пт': 'п\'ятниця', 'Сб': 'субота', 'Будь-який день': 'будь-який день' };
@@ -299,12 +299,11 @@
       + '<div class="note103">Якщо це невідкладний стан (ознаки інсульту, тяжка травма, гострий біль у животі, кровотеча), не заповнюйте форму, а телефонуйте 103.</div>'
       + '<h4>Обстеження</h4>'
       + fld('modality', 'Яке обстеження', chips('modality', ['КТ', 'МРТ'], 'seg'))
-      + fld('zone', 'Що обстежуємо', chips('zone_group', ZONE_GROUPS.map(function (g) { return g[0]; })) + '<div class="sub2" data-zone-sub></div>' + '<div class="sub2" data-if="zone_other"><input type="text" name="zone_other" placeholder="Напишіть, що саме" maxlength="120"></div>')
+      + fld('zone', 'Що обстежуємо', chips('zone_group', ZONE_GROUPS.map(function (g) { return g[0]; })) + '<div class="sub2" data-zone-sub></div>')
       + fld('apparatus', 'Апарат МРТ', chips('apparatus', ['1,5 Тесла', '3 Тесла'], 'seg') + '<div class="hint">Не впевнені, пропустіть, оператор підбере</div>', 'mri', true)
       + fld('contrast', 'Контраст', chips('contrast', ['З контрастом', 'Без контрасту'], 'seg'))
       + '<h4>Пацієнт</h4>'
       + swRow('for_other', 'Записую іншу людину')
-      + fld('name', 'Ім\'я пацієнта', '<input type="text" name="name" autocomplete="name" maxlength="60" placeholder="Як до вас звертатись">')
       + fld('age', 'Повних років', '<select name="age">' + ageOptions() + '</select>')
       + fld('weight', 'Вага', chips('weight', ['До 100 кг', '100-120 кг', 'Понад 120 кг'], 'seg'))
       + fld('girth', 'Обхват тіла в найгрубшому місці при опущених руках', chips('girth', ['До 140 см', '140-160 см', 'Понад 160 см'], 'seg'), 'mri')
@@ -344,7 +343,6 @@
     return v;
   }
   function zoneText(v) {
-    if (v.zone_group === 'Інше') { return v.zone_other || ''; }
     return v.zone_item || '';
   }
   function conds(v) {
@@ -355,7 +353,6 @@
       knee: /колін/.test(z), prostate: /простат/.test(z), liver: /печінк/.test(z),
       implants: !!v.implants, lens: !!v.lens, biopsy: !!v.biopsy,
       gfr_has: v.gfr === 'Є, ШКФ у нормі' || v.gfr === 'Є, ШКФ низька',
-      zone_other: v.zone_group === 'Інше',
       referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast)))
     };
   }
@@ -422,9 +419,8 @@
   function validate(form, v) {
     var c = conds(v), e = {};
     if (!v.modality) { e.modality = 'Оберіть КТ або МРТ'; }
-    if (!v.zone_group || !zoneText(v)) { e.zone = v.zone_group === 'Інше' ? 'Напишіть, що обстежуємо' : 'Оберіть ділянку'; }
+    if (!zoneText(v)) { e.zone = v.zone_group ? 'Оберіть ділянку' : 'Оберіть групу, потім ділянку'; }
     if (!v.contrast) { e.contrast = 'Оберіть, з контрастом чи без'; }
-    if (!v.name) { e.name = 'Як звати пацієнта?'; }
     if (!v.age) { e.age = 'Оберіть вік'; }
     if (!v.weight) { e.weight = 'Оберіть вагу'; }
     if (c.mri && !v.girth) { e.girth = 'Оберіть обхват'; }
@@ -483,7 +479,7 @@
       var payload = {
         session_id: 'fm-' + uid().slice(3), site: SITE, page: location.href,
         modality: v.modality, zone: zoneText(v), apparatus: v.apparatus, contrast: v.contrast.toLowerCase(),
-        for_other: v.for_other, name: v.name, age: v.age, weight_band: v.weight, girth_band: v.girth, knee_band: v.knee,
+        for_other: v.for_other, age: v.age, weight_band: v.weight, girth_band: v.girth, knee_band: v.knee,
         implants: v.implants, implants_docs: v.implants_docs, pacemaker: v.pacemaker, lens: v.lens, lens_recent: v.lens_recent,
         cannot_lie: v.cannot_lie, claustro: v.claustro, biopsy: v.biopsy, biopsy_recent: v.biopsy_recent, primovist: v.primovist,
         gfr_status: v.gfr, gfr_old: v.gfr_old, anemia: v.anemia, lactation: v.lactation, pregnancy: v.pregnancy,
@@ -509,7 +505,7 @@
 
   function renderDone() {
     var d = formDone;
-    var h = '<div class="done"><div class="ok"><b>Дякуємо' + (d.name ? ', ' + esc(d.name) : '') + '. Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
+    var h = '<div class="done"><div class="ok"><b>Дякуємо. Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
     if (d.escalation) { h += '<div class="esc">З цим питанням має розібратися наш лікар. Радіолог зателефонує вам.</div>'; }
     (d.notes || []).forEach(function (n) { h += '<p>' + esc(n) + '</p>'; });
     if ((d.preparation || []).length) { h += '<h4>Підготовка</h4>'; }
