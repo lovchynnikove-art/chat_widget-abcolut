@@ -142,7 +142,6 @@
     + '.chk{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1px solid #e6e9ee;border-radius:12px;cursor:pointer;line-height:1.35}'
     + '.chk input{margin-top:2px;flex:none;width:18px;height:18px;accent-color:' + COLOR + '}'
     + '.f .hint{font-size:12px;color:#7a8594;margin-top:6px}'
-    + '.f .linkbtn{background:none;border:0;padding:0;font:inherit;font-size:12px;color:' + COLOR + ';text-decoration:underline;cursor:pointer}'
     + '.f .slotsbox .chips button{min-width:74px;text-align:center}'
     + '.f .slotsbox .sub2 .chips button{min-width:62px}'
     + '.f .slotsbox .hint{margin:0 0 8px}'
@@ -361,9 +360,6 @@
     ['Таз', ['Органи малого таза', 'Простата', 'Матка й придатки', 'Сечовий міхур', 'Пряма кишка', 'Кістки таза']],
     ['Судини', ['Судини головного мозку', 'Судини шиї', 'Аорта', 'Судини ніг', 'Судини нирок', 'Вени']]
   ];
-  var DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Будь-який день'];
-  var DAY_FULL = { 'Пн': 'понеділок', 'Вт': 'вівторок', 'Ср': 'середа', 'Чт': 'четвер', 'Пт': 'п\'ятниця', 'Сб': 'субота', 'Будь-який день': 'будь-який день' };
-  var PARTS = ['Зранку', 'До обіду', 'Після обіду', 'Ввечері'];
 
   function chips(name, opts, cls) {
     return '<div class="chips' + (cls ? ' ' + cls : '') + '" data-chips="' + name + '">' + opts.map(function (o) { return '<button type="button" data-val="' + esc(o) + '">' + esc(o) + '</button>'; }).join('') + '</div>';
@@ -409,12 +405,7 @@
       + swRow('pregnancy', 'Вагітність', 'ct')
       + fld('referral', 'Скерування від лікаря', chips('referral', ['Є', 'Немає'], 'seg'), 'referral')
       + '<h4>Коли зручно</h4>'
-      + fld('slot', 'Вільний час', '<div class="slotsbox"><div class="hint" data-slots-hint></div><div class="chips" data-chips="slot_day"></div><div class="sub2" data-slot-times hidden></div></div>'
-        + '<div class="hint"><input type="hidden" name="noslot" value="">Немає зручного часу? <button type="button" class="linkbtn" data-noslot>Хай оператор підбере</button></div>')
-      + '<div data-if="noslot">'
-      + fld('day', 'День', chips('day', DAYS))
-      + fld('part', 'Час', chips('part', PARTS), '', true)
-      + '</div>'
+      + fld('slot', 'Вільний час', '<div class="slotsbox"><div class="hint" data-slots-hint></div><div class="chips" data-chips="slot_day"></div><div class="sub2" data-slot-times hidden></div></div>')
       + '<h4>Контакт</h4>'
       + '<div class="two">'
       + fld('first_name', 'Ім’я', '<input type="text" name="first_name" autocomplete="given-name" maxlength="40" placeholder="Оксана">')
@@ -444,8 +435,7 @@
       knee: /колін/.test(z), prostate: /простат/.test(z), liver: /печінк/.test(z),
       implants: !!v.implants, lens: !!v.lens, biopsy: !!v.biopsy,
       gfr_has: v.gfr === 'Є, ШКФ у нормі' || v.gfr === 'Є, ШКФ низька',
-      referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast))),
-      noslot: !!v.noslot
+      referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast)))
     };
   }
   // ключ апарата для календаря: ct | mri15 | mri3 | ''
@@ -488,9 +478,8 @@
     }
     if (d === 'loading') { return; }
     if (d === 'error') {
-      hint.textContent = 'Не вдалося отримати розклад. Оберіть зручний день нижче, оператор підбере час.';
-      dayC.innerHTML = ''; dayC.setAttribute('data-value', ''); times.hidden = true;
-      var ns = form.querySelector('[name="noslot"]'); if (ns && !ns.value) { ns.value = '1'; }
+      hint.textContent = 'Розклад тимчасово недоступний. Заявку приймемо, час підбере і підтвердить оператор.';
+      dayC.innerHTML = ''; dayC.setAttribute('data-value', ''); times.hidden = true; times.innerHTML = '';
       return;
     }
     hint.textContent = d.label + ', ' + d.place + '. Оберіть день, потім годину:';
@@ -522,17 +511,12 @@
     // підказка до ШКФ залежно від модальності
     var gh = form.querySelector('[data-gfr-hint]');
     if (gh) { gh.textContent = c.ct ? 'Низька для КТ: 52 мл/хв і менше' : c.mri ? 'Низька для МРТ: 32 мл/хв і менше' : ''; }
-    // вільний час з календаря залежить від апарата
+    // вільний час з календаря залежить від обраного апарата
     var sb = form.querySelector('.slotsbox');
-    if (sb && !c.noslot) {
+    if (sb) {
       var key = slotKeyFor(v), stamp = key + '|' + (v.modality || '');
       if (sb.getAttribute('data-stamp') !== stamp) { sb.setAttribute('data-stamp', stamp); renderSlots(form, key); }
     }
-    // КТ не працює у вихідні і ввечері
-    form.querySelectorAll('.chips[data-chips="day"] button').forEach(function (b) { b.hidden = c.ct && b.getAttribute('data-val') === 'Сб'; });
-    form.querySelectorAll('.chips[data-chips="part"] button').forEach(function (b) { b.hidden = c.ct && b.getAttribute('data-val') === 'Ввечері'; });
-    if (c.ct && v.day === 'Сб') { setChips(form.querySelector('.chips[data-chips="day"]'), ''); }
-    if (c.ct && v.part === 'Ввечері') { setChips(form.querySelector('.chips[data-chips="part"]'), ''); }
     saveDraft(v);
   }
   function setChips(c, value) {
@@ -590,10 +574,9 @@
     if (c.mri && c.knee && !v.knee) { e.knee = 'Оберіть обхват коліна'; }
     if (c.contrast && !v.gfr) { e.gfr = 'Оберіть варіант'; }
     if (c.referral && !v.referral) { e.referral = 'Є скерування чи немає?'; }
-    if (c.noslot) { if (!v.day) { e.day = 'Оберіть день'; } }
-    else if (!v.slot_time) {
+    if (!v.slot_time && slotsCache[slotKeyFor(v)] !== 'error') {
       var sk = slotKeyFor(v);
-      e.slot = !sk ? (c.mri ? 'Оберіть апарат МРТ вище або натисніть «Хай оператор підбере»' : 'Спершу оберіть обстеження') : (v.slot_day ? 'Оберіть годину' : 'Оберіть день і годину');
+      e.slot = !sk ? (c.mri ? 'Оберіть апарат МРТ вище, щоб побачити вільні години' : 'Спершу оберіть обстеження') : (v.slot_day ? 'Оберіть годину' : 'Оберіть день і годину');
     }
     if (!v.first_name) { e.first_name = 'Вкажіть ім’я'; }
     if (!v.last_name) { e.last_name = 'Вкажіть прізвище'; }
@@ -608,19 +591,9 @@
     body.innerHTML = formHtml();
     var form = body.querySelector('form');
     fillDraft(form, loadDraft());
-    var ns0 = form.querySelector('[name="noslot"]');
-    if (ns0 && ns0.value) { form.querySelector('[data-noslot]').textContent = 'Обрати час із календаря'; form.querySelector('.slotsbox').hidden = true; }
     applyVisibility(form);
 
     form.addEventListener('click', function (e) {
-      var nb = e.target.closest('[data-noslot]');
-      if (nb) {
-        var ns = form.querySelector('[name="noslot"]'); ns.value = ns.value ? '' : '1';
-        nb.textContent = ns.value ? 'Обрати час із календаря' : 'Хай оператор підбере';
-        form.querySelector('.slotsbox').hidden = !!ns.value;
-        applyVisibility(form);
-        return;
-      }
       var b = e.target.closest('.chips button');
       if (!b) { return; }
       var c = b.parentNode;
@@ -664,8 +637,8 @@
         cannot_lie: v.cannot_lie, claustro: v.claustro, biopsy: v.biopsy, biopsy_recent: v.biopsy_recent, primovist: v.primovist,
         gfr_status: v.gfr, gfr_old: v.gfr_old, anemia: v.anemia, lactation: v.lactation, pregnancy: v.pregnancy,
         referral: v.referral.toLowerCase(),
-        preferred_time: v.noslot ? DAY_FULL[v.day] + (v.part ? ', ' + v.part.toLowerCase() : '') : slotLabel(slotKeyFor(v), v.slot_time),
-        slot_start: v.noslot ? '' : v.slot_time, slot_apparatus: v.noslot ? '' : slotKeyFor(v), slot_label: v.noslot ? '' : slotLabel(slotKeyFor(v), v.slot_time),
+        preferred_time: v.slot_time ? slotLabel(slotKeyFor(v), v.slot_time) : 'час підбере оператор',
+        slot_start: v.slot_time, slot_apparatus: v.slot_time ? slotKeyFor(v) : '', slot_label: v.slot_time ? slotLabel(slotKeyFor(v), v.slot_time) : '',
         name: v.first_name + ' ' + v.last_name, first_name: v.first_name, last_name: v.last_name,
         phone: v.phone, consent: v.consent
       };
