@@ -11,6 +11,8 @@
   var ds = (script && script.dataset) || {};
   var ENDPOINT = ds.endpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-chat';
   var FORM_ENDPOINT = ds.formEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-form';
+  var SLOTS_ENDPOINT = ds.slotsEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-slots';
+  var BOOK_ENDPOINT = ds.bookEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-book';
   var COLOR = ds.color || '#0077b3';
   var SITE = ds.site || location.hostname;
   var TITLE = ds.title || 'Онлайн-чат АбсолютМед';
@@ -36,7 +38,7 @@
     return fresh();
   }
   function fresh() {
-    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', updated: Date.now() };
+    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, updated: Date.now() };
   }
   function save() {
     state.updated = Date.now();
@@ -86,6 +88,15 @@
     + '.btns button{border:1.5px solid ' + COLOR + ';color:' + COLOR + ';background:#fff;border-radius:18px;padding:7px 13px;font:inherit;font-size:14px;cursor:pointer}'
     + '.btns button:hover{background:' + COLOR + ';color:#fff}'
     + '.btns button.alt{border-style:dashed}'
+    + '.bookbox{align-self:stretch;background:#f4f7fb;border:1px solid #dde5ef;border-radius:14px;padding:12px 14px}'
+    + '.bookbox b{display:block;margin-bottom:2px;font-size:14px}'
+    + '.bookbox .bh{font-size:12px;color:#5b6675;margin-bottom:8px}'
+    + '.bookbox .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}'
+    + '.bookbox .chips button{border:1.5px solid #c9d3df;background:#fff;border-radius:16px;padding:6px 11px;font:inherit;font-size:13px;cursor:pointer;color:#1c2430}'
+    + '.bookbox .chips button.on{background:' + COLOR + ';border-color:' + COLOR + ';color:#fff}'
+    + '.bookbox .chips button:hover{border-color:' + COLOR + '}'
+    + '.bookbox .skip{background:none;border:0;padding:0;font:inherit;font-size:12px;color:#5b6675;text-decoration:underline;cursor:pointer}'
+    + '.bookok{align-self:stretch;background:#e8f5ee;border:1px solid #bfe3cf;border-radius:14px;padding:12px 14px;font-size:14px}'
     + '.typing{align-self:flex-start;background:#fff;border-radius:14px;padding:12px 14px;display:flex;gap:4px}'
     + '.typing i{width:7px;height:7px;border-radius:50%;background:#9aa4b1;animation:am-b 1.2s infinite}'
     + '.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}'
@@ -131,6 +142,11 @@
     + '.chk{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1px solid #e6e9ee;border-radius:12px;cursor:pointer;line-height:1.35}'
     + '.chk input{margin-top:2px;flex:none;width:18px;height:18px;accent-color:' + COLOR + '}'
     + '.f .hint{font-size:12px;color:#7a8594;margin-top:6px}'
+    + '.f .linkbtn{background:none;border:0;padding:0;font:inherit;font-size:12px;color:' + COLOR + ';text-decoration:underline;cursor:pointer}'
+    + '.f .slotsbox .chips button{min-width:74px;text-align:center}'
+    + '.f .slotsbox .sub2 .chips button{min-width:62px}'
+    + '.f .slotsbox .hint{margin:0 0 8px}'
+    + '.done .booked{background:#e8f5ee;border:1px solid #bfe3cf;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px}'
     + '.fld .fe{margin-top:6px;font-size:12.5px;color:#c0392b}'
     + '.fld.invalid .l{color:#c0392b}'
     + '.fld.invalid input,.fld.invalid select{border-color:#e05a4e}'
@@ -221,6 +237,13 @@
       }
       if (box.children.length) { body.appendChild(box); }
     }
+    if (state.booked) {
+      var ok = document.createElement('div'); ok.className = 'bookok';
+      ok.innerHTML = '<b>Час заброньовано: ' + esc(state.booked.label) + '</b>' + (state.booked.place ? '<br>' + esc(state.booked.place) : '') + '<br>Оператор передзвонить і підтвердить запис.';
+      body.appendChild(ok);
+    } else if (ended && state.booking && state.booking.apparatus && state.status === 'done') {
+      body.appendChild(bookBox());
+    }
     if (ended) {
       var r = document.createElement('button'); r.className = 'restart'; r.type = 'button';
       r.textContent = 'Розпочати нову розмову';
@@ -237,6 +260,61 @@
   function scroll() { body.scrollTop = body.scrollHeight; }
 
   /* ---------- чат: відправка ---------- */
+  var chatSlots = null, chatSlotsKey = '', chatDay = '', chatBusy = false;
+  function bookBox() {
+    var box = document.createElement('div'); box.className = 'bookbox';
+    var key = state.booking.apparatus;
+    var head = '<b>Обрати точний час</b>';
+    if (chatSlotsKey !== key) {
+      chatSlotsKey = key; chatSlots = 'loading'; chatDay = '';
+      fetch(SLOTS_ENDPOINT + '?apparatus=' + key)
+        .then(function (r) { return r.json(); })
+        .then(function (j) { chatSlots = (j && j.ok && j.days && j.days.length) ? j : 'error'; })
+        .catch(function () { chatSlots = 'error'; })
+        .then(function () { render(); });
+    }
+    if (chatSlots === 'loading' || chatSlots === null) { box.innerHTML = head + '<div class="bh">Дивлюсь вільні години...</div>'; return box; }
+    if (chatSlots === 'error') { box.innerHTML = head + '<div class="bh">Розклад зараз недоступний. Оператор підбере час і передзвонить.</div>'; return box; }
+    box.innerHTML = head + '<div class="bh">' + esc(chatSlots.label) + ', ' + esc(chatSlots.place) + '. Оберіть день, потім годину. Можна пропустити, тоді час підбере оператор.</div>';
+    var days = document.createElement('div'); days.className = 'chips';
+    chatSlots.days.forEach(function (d) {
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = d.label;
+      if (d.date === chatDay) { b.className = 'on'; }
+      b.addEventListener('click', function () { chatDay = (chatDay === d.date ? '' : d.date); render(); });
+      days.appendChild(b);
+    });
+    box.appendChild(days);
+    var dd = chatSlots.days.filter(function (x) { return x.date === chatDay; })[0];
+    if (dd) {
+      var times = document.createElement('div'); times.className = 'chips';
+      dd.slots.forEach(function (sl) {
+        var b = document.createElement('button'); b.type = 'button'; b.textContent = sl.label; b.disabled = chatBusy;
+        b.addEventListener('click', function () { bookSlot(sl.start); });
+        times.appendChild(b);
+      });
+      box.appendChild(times);
+    }
+    var skip = document.createElement('button'); skip.type = 'button'; skip.className = 'skip';
+    skip.textContent = 'Пропустити, хай підбере оператор';
+    skip.addEventListener('click', function () { state.booking = null; save(); render(); });
+    box.appendChild(skip);
+    return box;
+  }
+  function bookSlot(start) {
+    if (chatBusy) { return; }
+    chatBusy = true; render();
+    var payload = { apparatus: state.booking.apparatus, start: start, patient: 'Пацієнт із чату', phone: state.booking.phone || '', exam: 'запис із чат-віджета, деталі в заявці', source: 'чат ' + SITE, session_id: 'chat-' + state.session_id };
+    fetch(BOOK_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        chatBusy = false;
+        if (d && d.ok) { state.booked = { label: d.label, place: d.place }; state.booking = null; save(); render(); return; }
+        chatSlotsKey = ''; chatSlots = null; render();
+        add('err', (d && d.reason ? 'Цей час уже зайняли. ' : '') + 'Оберіть, будь ласка, інший.');
+        scroll();
+      })
+      .catch(function () { chatBusy = false; render(); add('err', 'Не вдалося забронювати час. Оператор передзвонить і підбере.'); scroll(); });
+  }
   function send(text) {
     text = String(text || '').trim();
     if (!text || busy || state.status !== 'in_progress') { return; }
@@ -256,6 +334,7 @@
         state.messages.push({ role: 'assistant', content: d.reply });
         state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 4).map(String) : [];
         state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress';
+        if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
         busy = false; save(); render();
       })
       .catch(function () {
@@ -330,8 +409,12 @@
       + swRow('pregnancy', 'Вагітність', 'ct')
       + fld('referral', 'Скерування від лікаря', chips('referral', ['Є', 'Немає'], 'seg'), 'referral')
       + '<h4>Коли зручно</h4>'
+      + fld('slot', 'Вільний час', '<div class="slotsbox"><div class="hint" data-slots-hint></div><div class="chips" data-chips="slot_day"></div><div class="sub2" data-slot-times hidden></div></div>'
+        + '<div class="hint"><input type="hidden" name="noslot" value="">Немає зручного часу? <button type="button" class="linkbtn" data-noslot>Хай оператор підбере</button></div>')
+      + '<div data-if="noslot">'
       + fld('day', 'День', chips('day', DAYS))
       + fld('part', 'Час', chips('part', PARTS), '', true)
+      + '</div>'
       + '<h4>Контакт</h4>'
       + '<div class="two">'
       + fld('first_name', 'Ім’я', '<input type="text" name="first_name" autocomplete="given-name" maxlength="40" placeholder="Оксана">')
@@ -361,8 +444,73 @@
       knee: /колін/.test(z), prostate: /простат/.test(z), liver: /печінк/.test(z),
       implants: !!v.implants, lens: !!v.lens, biopsy: !!v.biopsy,
       gfr_has: v.gfr === 'Є, ШКФ у нормі' || v.gfr === 'Є, ШКФ низька',
-      referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast)))
+      referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast))),
+      noslot: !!v.noslot
     };
+  }
+  // ключ апарата для календаря: ct | mri15 | mri3 | ''
+  function slotKeyFor(v) {
+    if (v.modality === 'КТ') { return 'ct'; }
+    if (v.modality === 'МРТ') { return /3/.test(v.apparatus || '') ? 'mri3' : /1,5/.test(v.apparatus || '') ? 'mri15' : ''; }
+    return '';
+  }
+  var slotsCache = {};
+  function chipsKV(name, pairs) {
+    return '<div class="chips" data-chips="' + name + '">' + pairs.map(function (o) { return '<button type="button" data-val="' + esc(o[0]) + '" data-label="' + esc(o[1]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>';
+  }
+  function slotLabel(key, iso) {
+    var d = slotsCache[key]; if (!d || !d.days) { return ''; }
+    for (var i = 0; i < d.days.length; i++) { for (var j = 0; j < d.days[i].slots.length; j++) { if (d.days[i].slots[j].start === iso) { return d.days[i].label + ' ' + d.days[i].slots[j].label; } } }
+    return '';
+  }
+  function renderSlots(form, key) {
+    var box = form.querySelector('.slotsbox'); if (!box) { return; }
+    var hint = box.querySelector('[data-slots-hint]');
+    var dayC = box.querySelector('.chips[data-chips="slot_day"]');
+    var times = box.querySelector('[data-slot-times]');
+    var v = vals(form);
+    box.setAttribute('data-key', key);
+    if (!key) {
+      hint.textContent = v.modality === 'МРТ' ? 'Оберіть апарат МРТ вище, щоб побачити вільний час, або лишіть вибір оператору.' : 'Спершу оберіть обстеження, і тут з’явиться вільний час.';
+      dayC.innerHTML = ''; dayC.setAttribute('data-value', ''); times.hidden = true; times.innerHTML = '';
+      return;
+    }
+    var d = slotsCache[key];
+    if (!d) {
+      slotsCache[key] = 'loading';
+      hint.textContent = 'Шукаю вільний час...'; dayC.innerHTML = ''; times.hidden = true;
+      fetch(SLOTS_ENDPOINT + '?apparatus=' + key)
+        .then(function (r) { return r.json(); })
+        .then(function (j) { slotsCache[key] = (j && j.ok && j.days && j.days.length) ? j : 'error'; })
+        .catch(function () { slotsCache[key] = 'error'; })
+        .then(function () { if (box.getAttribute('data-key') === key) { renderSlots(form, key); } });
+      return;
+    }
+    if (d === 'loading') { return; }
+    if (d === 'error') {
+      hint.textContent = 'Не вдалося отримати розклад. Оберіть зручний день нижче, оператор підбере час.';
+      dayC.innerHTML = ''; dayC.setAttribute('data-value', ''); times.hidden = true;
+      var ns = form.querySelector('[name="noslot"]'); if (ns && !ns.value) { ns.value = '1'; }
+      return;
+    }
+    hint.textContent = d.label + ', ' + d.place + '. Оберіть день, потім годину:';
+    var prevDay = v.slot_day, prevTime = v.slot_time;
+    dayC.innerHTML = d.days.map(function (x) { return '<button type="button" data-val="' + esc(x.date) + '">' + esc(x.label) + '</button>'; }).join('');
+    var dayOk = d.days.some(function (x) { return x.date === prevDay; });
+    setChips(dayC, dayOk ? prevDay : '');
+    renderSlotTimes(form, dayOk ? prevTime : '');
+  }
+  function renderSlotTimes(form, keepTime) {
+    var box = form.querySelector('.slotsbox'); if (!box) { return; }
+    var key = box.getAttribute('data-key'), d = slotsCache[key];
+    var times = box.querySelector('[data-slot-times]');
+    var day = box.querySelector('.chips[data-chips="slot_day"]').getAttribute('data-value');
+    var dd = (d && d.days) ? d.days.filter(function (x) { return x.date === day; })[0] : null;
+    if (!dd) { times.hidden = true; times.innerHTML = ''; return; }
+    times.hidden = false;
+    times.innerHTML = '<div class="sl">Вільні години <b>' + esc(dd.label) + '</b></div>' + chipsKV('slot_time', dd.slots.map(function (x) { return [x.start, x.label]; }));
+    var ok = dd.slots.some(function (x) { return x.start === keepTime; });
+    setChips(times.querySelector('.chips'), ok ? keepTime : '');
   }
   function applyVisibility(form) {
     var v = vals(form), c = conds(v);
@@ -374,6 +522,12 @@
     // підказка до ШКФ залежно від модальності
     var gh = form.querySelector('[data-gfr-hint]');
     if (gh) { gh.textContent = c.ct ? 'Низька для КТ: 52 мл/хв і менше' : c.mri ? 'Низька для МРТ: 32 мл/хв і менше' : ''; }
+    // вільний час з календаря залежить від апарата
+    var sb = form.querySelector('.slotsbox');
+    if (sb && !c.noslot) {
+      var key = slotKeyFor(v), stamp = key + '|' + (v.modality || '');
+      if (sb.getAttribute('data-stamp') !== stamp) { sb.setAttribute('data-stamp', stamp); renderSlots(form, key); }
+    }
     // КТ не працює у вихідні і ввечері
     form.querySelectorAll('.chips[data-chips="day"] button').forEach(function (b) { b.hidden = c.ct && b.getAttribute('data-val') === 'Сб'; });
     form.querySelectorAll('.chips[data-chips="part"] button').forEach(function (b) { b.hidden = c.ct && b.getAttribute('data-val') === 'Ввечері'; });
@@ -386,6 +540,7 @@
     c.setAttribute('data-value', value || '');
     c.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-val') === value); });
     if (c.getAttribute('data-chips') === 'zone_group') { renderZoneSub(c.closest('form'), value); }
+    if (c.getAttribute('data-chips') === 'slot_day') { renderSlotTimes(c.closest('form'), ''); }
     var fldEl = c.closest('.fld'); if (fldEl && value) { clearErr(fldEl); }
   }
   function renderZoneSub(form, group) {
@@ -435,7 +590,11 @@
     if (c.mri && c.knee && !v.knee) { e.knee = 'Оберіть обхват коліна'; }
     if (c.contrast && !v.gfr) { e.gfr = 'Оберіть варіант'; }
     if (c.referral && !v.referral) { e.referral = 'Є скерування чи немає?'; }
-    if (!v.day) { e.day = 'Оберіть день'; }
+    if (c.noslot) { if (!v.day) { e.day = 'Оберіть день'; } }
+    else if (!v.slot_time) {
+      var sk = slotKeyFor(v);
+      e.slot = !sk ? (c.mri ? 'Оберіть апарат МРТ вище або натисніть «Хай оператор підбере»' : 'Спершу оберіть обстеження') : (v.slot_day ? 'Оберіть годину' : 'Оберіть день і годину');
+    }
     if (!v.first_name) { e.first_name = 'Вкажіть ім’я'; }
     if (!v.last_name) { e.last_name = 'Вкажіть прізвище'; }
     if (!/^\+380 \d{2} \d{3} \d{2} \d{2}$/.test(v.phone)) { e.phone = 'Введіть повний номер'; }
@@ -449,9 +608,19 @@
     body.innerHTML = formHtml();
     var form = body.querySelector('form');
     fillDraft(form, loadDraft());
+    var ns0 = form.querySelector('[name="noslot"]');
+    if (ns0 && ns0.value) { form.querySelector('[data-noslot]').textContent = 'Обрати час із календаря'; form.querySelector('.slotsbox').hidden = true; }
     applyVisibility(form);
 
     form.addEventListener('click', function (e) {
+      var nb = e.target.closest('[data-noslot]');
+      if (nb) {
+        var ns = form.querySelector('[name="noslot"]'); ns.value = ns.value ? '' : '1';
+        nb.textContent = ns.value ? 'Обрати час із календаря' : 'Хай оператор підбере';
+        form.querySelector('.slotsbox').hidden = !!ns.value;
+        applyVisibility(form);
+        return;
+      }
       var b = e.target.closest('.chips button');
       if (!b) { return; }
       var c = b.parentNode;
@@ -495,7 +664,8 @@
         cannot_lie: v.cannot_lie, claustro: v.claustro, biopsy: v.biopsy, biopsy_recent: v.biopsy_recent, primovist: v.primovist,
         gfr_status: v.gfr, gfr_old: v.gfr_old, anemia: v.anemia, lactation: v.lactation, pregnancy: v.pregnancy,
         referral: v.referral.toLowerCase(),
-        preferred_time: DAY_FULL[v.day] + (v.part ? ', ' + v.part.toLowerCase() : ''),
+        preferred_time: v.noslot ? DAY_FULL[v.day] + (v.part ? ', ' + v.part.toLowerCase() : '') : slotLabel(slotKeyFor(v), v.slot_time),
+        slot_start: v.noslot ? '' : v.slot_time, slot_apparatus: v.noslot ? '' : slotKeyFor(v), slot_label: v.noslot ? '' : slotLabel(slotKeyFor(v), v.slot_time),
         name: v.first_name + ' ' + v.last_name, first_name: v.first_name, last_name: v.last_name,
         phone: v.phone, consent: v.consent
       };
@@ -518,6 +688,8 @@
   function renderDone() {
     var d = formDone;
     var h = '<div class="done"><div class="ok"><b>Дякуємо' + (d.name ? ', ' + esc(d.name) : '') + '. Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
+    if (d.booked) { h += '<div class="booked">Запис створено: <b>' + esc(d.booked_label || '') + '</b>' + (d.place ? ', ' + esc(d.place) : '') + '. Оператор передзвонить і підтвердить.</div>'; }
+    else if (d.slot_taken) { h += '<div class="esc">На жаль, обраний час щойно зайняли. Оператор передзвонить і запропонує найближчий вільний.</div>'; }
     if (d.escalation) { h += '<div class="esc">З цим питанням має розібратися наш лікар. Радіолог зателефонує вам.</div>'; }
     (d.notes || []).forEach(function (n) { h += '<p>' + esc(n) + '</p>'; });
     if ((d.preparation || []).length) { h += '<h4>Підготовка</h4>'; }
