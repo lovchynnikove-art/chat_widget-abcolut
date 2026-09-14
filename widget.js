@@ -367,6 +367,9 @@
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
         if (d.escalated) { state.escalated = true; }
         state.pick = (d.pick_time && d.apparatus && state.status === 'in_progress') ? String(d.apparatus) : null;
+        // Час, який Оля знайшла в календарі за словами пацієнта: зберігається, як обраний зі списку.
+        if (d.slot && d.slot.start) { state.slot = { apparatus: String(d.slot.apparatus || ''), start: String(d.slot.start), label: String(d.slot.label || '') }; }
+        if (d.slot_clear) { state.slot = null; }
         if (d.booked && d.booked.label) { state.booked = { label: d.booked.label, place: d.booked.place || '', escalated: !!state.escalated }; state.slot = null; }
         var bookedError = state.status === 'done' && state.slot && !state.booked ? (d.booked_error || 'календар не відповів') : '';
         if (state.status === 'done') { state.slot = null; }
