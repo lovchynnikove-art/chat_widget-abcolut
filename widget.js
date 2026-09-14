@@ -348,6 +348,7 @@
     if (!text || busy || state.status !== 'in_progress') { return; }
     if (text.length > 1000) { text = text.slice(0, 1000); }
     state.messages.push({ role: 'user', content: text });
+    var prevButtons = state.buttons || [];
     state.buttons = []; save();
     ta.value = ''; ta.style.height = 'auto';
     busy = true; render();
@@ -357,21 +358,24 @@
     var ep = resetEpoch;
     var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60) };
     fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      .then(function (r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
+      .then(function (r) { if (!r.ok) { var he = new Error('HTTP ' + r.status); he.server = true; throw he; } return r.json(); })
       .then(function (d) {
         if (ep !== resetEpoch) { return; }
-        if (!d || typeof d.reply !== 'string') { throw new Error('bad response'); }
+        if (!d || typeof d.reply !== 'string') { var be = new Error('bad response'); be.server = true; throw be; }
         state.messages.push({ role: 'assistant', content: d.reply });
-        state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 4).map(String) : [];
+        state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 4).map(function (b) { return String(b).slice(0, 40); }) : [];
         state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress';
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
         busy = false; save(); render();
       })
-      .catch(function () {
+      .catch(function (err) {
         if (ep !== resetEpoch) { return; }
         state.messages.pop();
+        state.buttons = prevButtons;
         busy = false; save(); render();
-        add('err', 'Не вдалося надіслати повідомлення. Перевірте інтернет і спробуйте ще раз.');
+        add('err', err && err.server
+          ? 'Технічна помилка на нашому боці. Спробуйте, будь ласка, ще раз за хвилину.'
+          : 'Не вдалося надіслати повідомлення. Перевірте інтернет і спробуйте ще раз.');
         ta.value = text; scroll();
       });
   }
