@@ -79,6 +79,9 @@
     + '.am-head .sw{margin-left:auto;background:rgba(255,255,255,.18);border:0;color:#fff;font:inherit;font-size:12px;padding:6px 10px;border-radius:14px;cursor:pointer;white-space:nowrap}'
     + '.am-head .sw:hover{background:rgba(255,255,255,.3)}'
     + '.am-head .x{background:transparent;border:0;color:#fff;font-size:22px;line-height:1;cursor:pointer;padding:2px 4px}'
+    + '.am-head .rs{background:transparent;border:0;cursor:pointer;width:30px;height:30px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center}'
+    + '.am-head .rs:hover{background:rgba(255,255,255,.18)}'
+    + '.am-head .rs svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
     + '.am-body{flex:1;overflow-y:auto;padding:14px 12px;background:#f3f5f8;display:flex;flex-direction:column;gap:8px}'
     + '.m{max-width:85%;padding:10px 13px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word}'
     + '.m.a{align-self:flex-start;background:#fff;border-bottom-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
@@ -164,6 +167,7 @@
 
   var ICON_CHAT = '<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-6.5A8 8 0 1 1 21 12z"/></svg>';
   var ICON_FORM = '<svg viewBox="0 0 24 24"><path d="M9 5h6M9 3h6v4H9zM5 6h1v15h12V6h1"/><path d="M8 12h8M8 16h5"/></svg>';
+  var ICON_RESET = '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 3v6h6"/></svg>';
 
   root.innerHTML = '<style>' + css + '</style>'
     + '<div class="am">'
@@ -173,7 +177,7 @@
     + '</div>'
     + '<div class="am-panel" role="dialog" aria-label="' + esc(TITLE) + '">'
     + '<div class="am-head"><div><div class="t">' + esc(TITLE) + '</div><div class="s">Оля, віртуальний асистент реєстратури</div></div>'
-    + '<button class="sw" type="button"></button><button class="x" aria-label="Закрити">×</button></div>'
+    + '<button class="sw" type="button"></button><button class="rs" type="button" aria-label="Почати спочатку" title="Почати спочатку">' + ICON_RESET + '</button><button class="x" aria-label="Закрити">×</button></div>'
     + '<div class="am-body"></div>'
     + '<div class="am-foot"><div class="row"><textarea rows="1" placeholder="Надіслати повідомлення..." aria-label="Повідомлення"></textarea>'
     + '<button class="send" aria-label="Надіслати"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></div>'
@@ -192,6 +196,7 @@
   root.querySelector('.am-btn').addEventListener('click', function () { setMode('chat'); setOpen(true); });
   root.querySelector('.am-pill').addEventListener('click', function () { setMode('form'); setOpen(true); });
   root.querySelector('.x').addEventListener('click', function () { setOpen(false); });
+  root.querySelector('.rs').addEventListener('click', function () { resetAll(); });
   sw.addEventListener('click', function () { setMode(state.mode === 'chat' ? 'form' : 'chat'); render(); });
   sendBtn.addEventListener('click', function () { send(ta.value); });
   ta.addEventListener('keydown', function (e) {
@@ -204,6 +209,28 @@
     state.open = v; save();
     wrap.classList.toggle('open', v);
     if (v) { render(); if (state.mode === 'chat') { setTimeout(function () { ta.focus(); }, 50); } }
+  }
+
+  // Кнопка «Почати спочатку»: чат, форма, обраний час і все збережене в sessionStorage.
+  // resetEpoch відсікає відповіді на запити, надіслані до скидання.
+  var resetEpoch = 0;
+  function hasProgress() {
+    if (state.messages.length || state.booked || formDone) { return true; }
+    var d = loadDraft();
+    return Object.keys(d).some(function (k) { return d[k] !== '' && d[k] !== false && d[k] != null; });
+  }
+  function resetAll() {
+    if (hasProgress() && typeof window.confirm === 'function' && !window.confirm('Почати спочатку? Розмову і заповнену форму буде очищено.')) { return; }
+    var m = state.mode;
+    resetEpoch++;
+    state = fresh(); state.open = true; state.mode = m;
+    busy = false; chatBusy = false; chatSlots = null; chatSlotsKey = ''; chatDay = '';
+    formDone = null; formBusy = false; slotsCache = {};
+    try { sessionStorage.removeItem(FORM_KEY); } catch (e) {}
+    ta.value = ''; ta.style.height = 'auto';
+    save(); render();
+    body.scrollTop = 0;
+    if (m === 'chat') { setTimeout(function () { ta.focus(); }, 50); }
   }
 
   /* ---------- рендер ---------- */
@@ -302,17 +329,19 @@
   function bookSlot(start) {
     if (chatBusy) { return; }
     chatBusy = true; render();
+    var ep = resetEpoch;
     var payload = { apparatus: state.booking.apparatus, start: start, patient: 'Пацієнт із чату', phone: state.booking.phone || '', exam: 'запис із чат-віджета, деталі в заявці', source: 'чат ' + SITE, session_id: 'chat-' + state.session_id };
     fetch(BOOK_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
+        if (ep !== resetEpoch) { return; }
         chatBusy = false;
         if (d && d.ok) { state.booked = { label: d.label, place: d.place }; state.booking = null; save(); render(); return; }
         chatSlotsKey = ''; chatSlots = null; render();
         add('err', (d && d.reason ? 'Цей час уже зайняли. ' : '') + 'Оберіть, будь ласка, інший.');
         scroll();
       })
-      .catch(function () { chatBusy = false; render(); add('err', 'Не вдалося забронювати час. Оператор передзвонить і підбере.'); scroll(); });
+      .catch(function () { if (ep !== resetEpoch) { return; } chatBusy = false; render(); add('err', 'Не вдалося забронювати час. Оператор передзвонить і підбере.'); scroll(); });
   }
   function send(text) {
     text = String(text || '').trim();
@@ -325,10 +354,12 @@
     var typing = document.createElement('div'); typing.className = 'typing'; typing.innerHTML = '<i></i><i></i><i></i>';
     body.appendChild(typing); scroll();
 
+    var ep = resetEpoch;
     var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60) };
     fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
       .then(function (d) {
+        if (ep !== resetEpoch) { return; }
         if (!d || typeof d.reply !== 'string') { throw new Error('bad response'); }
         state.messages.push({ role: 'assistant', content: d.reply });
         state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 4).map(String) : [];
@@ -337,6 +368,7 @@
         busy = false; save(); render();
       })
       .catch(function () {
+        if (ep !== resetEpoch) { return; }
         state.messages.pop();
         busy = false; save(); render();
         add('err', 'Не вдалося надіслати повідомлення. Перевірте інтернет і спробуйте ще раз.');
@@ -642,15 +674,18 @@
         name: v.first_name + ' ' + v.last_name, first_name: v.first_name, last_name: v.last_name,
         phone: v.phone, consent: v.consent
       };
+      var ep = resetEpoch;
       fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(function (r) { return r.json().then(function (d) { return { status: r.status, d: d }; }); })
         .then(function (x) {
+          if (ep !== resetEpoch) { return; }
           formBusy = false;
           if (x.status === 200 && x.d && x.d.ok) { formDone = x.d; try { sessionStorage.removeItem(FORM_KEY); } catch (e2) {} render(); return; }
           var msg = (x.d && x.d.errors && x.d.errors.length) ? x.d.errors.join('. ') : 'Не вдалося надіслати заявку. Спробуйте ще раз або напишіть у чат.';
           setErr(form, 'consent', msg); btn.disabled = false; btn.textContent = 'Надіслати заявку';
         })
         .catch(function () {
+          if (ep !== resetEpoch) { return; }
           formBusy = false;
           setErr(form, 'consent', 'Не вдалося надіслати заявку. Перевірте інтернет і спробуйте ще раз.');
           btn.disabled = false; btn.textContent = 'Надіслати заявку';
