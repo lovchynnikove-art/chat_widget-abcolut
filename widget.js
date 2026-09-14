@@ -38,7 +38,7 @@
     return fresh();
   }
   function fresh() {
-    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, updated: Date.now() };
+    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, escalated: false, updated: Date.now() };
   }
   function save() {
     state.updated = Date.now();
@@ -364,7 +364,7 @@
     body.appendChild(typing); scroll();
 
     var ep = resetEpoch;
-    var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60) };
+    var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60), escalated: !!state.escalated };
     fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) { var he = new Error('HTTP ' + r.status); he.server = true; throw he; } return r.json(); })
       .then(function (d) {
@@ -374,6 +374,7 @@
         state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 6).map(function (b) { return String(b).slice(0, 40); }) : [];
         state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress';
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
+        if (d.escalated) { state.escalated = true; }
         busy = false; save(); render(); focusInput(keepFocus);
       })
       .catch(function (err) {
