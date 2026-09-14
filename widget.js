@@ -343,6 +343,13 @@
       })
       .catch(function () { if (ep !== resetEpoch) { return; } chatBusy = false; render(); add('err', 'Не вдалося забронювати час. Оператор передзвонить і підбере.'); scroll(); });
   }
+  // Після відповіді курсор повертається в поле вводу: на комп'ютері завжди, на телефоні тільки якщо пацієнт друкував,
+  // щоб після натискання кнопки не вискакувала клавіатура.
+  function focusInput(wasFocused) {
+    if (ta.disabled || state.mode !== 'chat' || !state.open) { return; }
+    var finePointer = !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
+    if (wasFocused || finePointer) { ta.focus(); }
+  }
   function send(text) {
     text = String(text || '').trim();
     if (!text || busy || state.status !== 'in_progress') { return; }
@@ -351,6 +358,7 @@
     var prevButtons = state.buttons || [];
     state.buttons = []; save();
     ta.value = ''; ta.style.height = 'auto';
+    var keepFocus = root.activeElement === ta;
     busy = true; render();
     var typing = document.createElement('div'); typing.className = 'typing'; typing.innerHTML = '<i></i><i></i><i></i>';
     body.appendChild(typing); scroll();
@@ -366,7 +374,7 @@
         state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 6).map(function (b) { return String(b).slice(0, 40); }) : [];
         state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress';
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
-        busy = false; save(); render();
+        busy = false; save(); render(); focusInput(keepFocus);
       })
       .catch(function (err) {
         if (ep !== resetEpoch) { return; }
@@ -376,7 +384,8 @@
         add('err', err && err.server
           ? 'Технічна помилка на нашому боці. Спробуйте, будь ласка, ще раз за хвилину.'
           : 'Не вдалося надіслати повідомлення. Перевірте інтернет і спробуйте ще раз.');
-        ta.value = text; scroll();
+        if (!ta.value) { ta.value = text; }
+        focusInput(keepFocus); scroll();
       });
   }
 
