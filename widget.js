@@ -363,7 +363,7 @@
         if (ep !== resetEpoch) { return; }
         if (!d || typeof d.reply !== 'string') { var be = new Error('bad response'); be.server = true; throw be; }
         state.messages.push({ role: 'assistant', content: d.reply });
-        state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 4).map(function (b) { return String(b).slice(0, 40); }) : [];
+        state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 6).map(function (b) { return String(b).slice(0, 40); }) : [];
         state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress';
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
         busy = false; save(); render();
