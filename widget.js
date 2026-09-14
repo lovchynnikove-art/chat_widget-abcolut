@@ -265,7 +265,7 @@
     }
     if (state.booked) {
       var ok = document.createElement('div'); ok.className = 'bookok';
-      ok.innerHTML = '<b>Час заброньовано: ' + esc(state.booked.label) + '</b>' + (state.booked.place ? '<br>' + esc(state.booked.place) : '') + '<br>Оператор передзвонить і підтвердить запис.';
+      ok.innerHTML = '<b>Час заброньовано: ' + esc(state.booked.label) + '</b>' + (state.booked.place ? '<br>' + esc(state.booked.place) : '') + (state.booked.escalated ? '<br>Час попередній: оператор передзвонить після узгодження з радіологом і підтвердить запис.' : '<br>Оператор передзвонить і підтвердить запис.');
       body.appendChild(ok);
     } else if (ended && state.booking && state.booking.apparatus && state.status === 'done') {
       body.appendChild(bookBox());
@@ -301,7 +301,7 @@
     }
     if (chatSlots === 'loading' || chatSlots === null) { box.innerHTML = head + '<div class="bh">Дивлюсь вільні години...</div>'; return box; }
     if (chatSlots === 'error') { box.innerHTML = head + '<div class="bh">Розклад зараз недоступний. Оператор підбере час і передзвонить.</div>'; return box; }
-    box.innerHTML = head + '<div class="bh">' + esc(chatSlots.label) + ', ' + esc(chatSlots.place) + '. Оберіть день, потім годину. Можна пропустити, тоді час підбере оператор.</div>';
+    box.innerHTML = head + '<div class="bh">' + esc(chatSlots.label) + ', ' + esc(chatSlots.place) + '. Оберіть день, потім годину.' + (state.booking.escalated ? ' Час буде попереднім: його підтвердять після узгодження з радіологом.' : '') + ' Можна пропустити, тоді час підбере оператор.</div>';
     var days = document.createElement('div'); days.className = 'chips';
     chatSlots.days.forEach(function (d) {
       var b = document.createElement('button'); b.type = 'button'; b.textContent = d.label;
@@ -330,13 +330,13 @@
     if (chatBusy) { return; }
     chatBusy = true; render();
     var ep = resetEpoch;
-    var payload = { apparatus: state.booking.apparatus, start: start, patient: 'Пацієнт із чату', phone: state.booking.phone || '', exam: 'запис із чат-віджета, деталі в заявці', source: 'чат ' + SITE, session_id: 'chat-' + state.session_id };
+    var payload = { apparatus: state.booking.apparatus, start: start, patient: 'Пацієнт із чату', phone: state.booking.phone || '', exam: state.booking.escalated ? 'потрібне узгодження радіолога, деталі в заявці' : 'запис із чат-віджета, деталі в заявці', source: 'чат ' + SITE, session_id: 'chat-' + state.session_id };
     fetch(BOOK_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (ep !== resetEpoch) { return; }
         chatBusy = false;
-        if (d && d.ok) { state.booked = { label: d.label, place: d.place }; state.booking = null; save(); render(); return; }
+        if (d && d.ok) { state.booked = { label: d.label, place: d.place, escalated: !!state.booking.escalated }; state.booking = null; save(); render(); return; }
         chatSlotsKey = ''; chatSlots = null; render();
         add('err', (d && d.reason ? 'Цей час уже зайняли. ' : '') + 'Оберіть, будь ласка, інший.');
         scroll();
