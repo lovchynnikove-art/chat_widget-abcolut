@@ -13,6 +13,8 @@
   var FORM_ENDPOINT = ds.formEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-form';
   var SLOTS_ENDPOINT = ds.slotsEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-slots';
   var BOOK_ENDPOINT = ds.bookEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-book';
+  var OPERATOR_ENDPOINT = ds.operatorEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-operator';
+  var POLL_MS = +ds.pollMs || 4000;
   var COLOR = ds.color || '#0077b3';
   var SITE = ds.site || location.hostname;
   var TITLE = ds.title || 'Онлайн-чат АбсолютМед';
@@ -38,7 +40,7 @@
     return fresh();
   }
   function fresh() {
-    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, escalated: false, pick: null, slot: null, updated: Date.now() };
+    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, escalated: false, pick: null, slot: null, taken: false, op_cursor: null, updated: Date.now() };
   }
   function save() {
     state.updated = Date.now();
@@ -87,6 +89,9 @@
     + '.m.a{align-self:flex-start;background:#fff;border-bottom-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
     + '.m.u{align-self:flex-end;background:' + COLOR + ';color:#fff;border-bottom-right-radius:4px}'
     + '.m.err{align-self:center;background:#fff3f3;color:#9b1c1c;font-size:13px;text-align:center}'
+    + '.m.a.op{background:#eef6ff;border:1px solid #cfe3f7}'
+    + '.m .who{display:block;font-size:11px;font-weight:600;color:#1f5f99;margin-bottom:2px}'
+    + '.opbar{align-self:center;font-size:12px;color:#1f5f99;background:#eef6ff;border-radius:10px;padding:4px 10px}'
     + '.btns{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;max-width:90%}'
     + '.btns button{border:1.5px solid ' + COLOR + ';color:' + COLOR + ';background:#fff;border-radius:18px;padding:7px 13px;font:inherit;font-size:14px;cursor:pointer}'
     + '.btns button:hover{background:' + COLOR + ';color:#fff}'
@@ -247,8 +252,12 @@
 
   function renderChat() {
     add('a', GREETING);
-    state.messages.forEach(function (m) { add(m.role === 'user' ? 'u' : 'a', m.content); });
-    var ended = state.status !== 'in_progress';
+    state.messages.forEach(function (m) {
+      if (m.from === 'operator') { addOperator(m.content); } else { add(m.role === 'user' ? 'u' : 'a', m.content); }
+    });
+    // Діалог прийняв оператор реєстратури: розмова триває, навіть якщо Оля вже попрощалась.
+    if (state.taken) { var bar = document.createElement('div'); bar.className = 'opbar'; bar.textContent = 'Вам відповідає оператор реєстратури'; body.appendChild(bar); }
+    var ended = state.status !== 'in_progress' && !state.taken;
     if (!ended && !busy) {
       var box = document.createElement('div'); box.className = 'btns';
       (state.buttons || []).forEach(function (b) {
@@ -281,6 +290,11 @@
   }
   function add(cls, text) {
     var d = document.createElement('div'); d.className = 'm ' + cls; d.textContent = text; body.appendChild(d); return d;
+  }
+  function addOperator(text) {
+    var d = document.createElement('div'); d.className = 'm a op';
+    var who = document.createElement('span'); who.className = 'who'; who.textContent = 'Оператор реєстратури';
+    d.appendChild(who); d.appendChild(document.createTextNode(text)); body.appendChild(d); return d;
   }
   function scroll() { body.scrollTop = body.scrollHeight; }
 
@@ -343,7 +357,7 @@
   }
   function send(text) {
     text = String(text || '').trim();
-    if (!text || busy || state.status !== 'in_progress') { return; }
+    if (!text || busy || (state.status !== 'in_progress' && !state.taken)) { return; }
     if (text.length > 1000) { text = text.slice(0, 1000); }
     state.messages.push({ role: 'user', content: text });
     var prevButtons = state.buttons || [], prevPick = state.pick;
@@ -361,9 +375,11 @@
       .then(function (d) {
         if (ep !== resetEpoch) { return; }
         if (!d || typeof d.reply !== 'string') { var be = new Error('bad response'); be.server = true; throw be; }
-        state.messages.push({ role: 'assistant', content: d.reply });
+        // Діалог в оператора: Оля мовчить, відповідь оператора прийде опитуванням.
+        if (d.operator || d.taken) { state.taken = true; }
+        if (d.reply) { state.messages.push({ role: 'assistant', content: d.reply }); }
         state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 6).map(function (b) { return String(b).slice(0, 40); }) : [];
-        state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress';
+        if (!d.operator) { state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress'; }
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
         if (d.escalated) { state.escalated = true; }
         state.pick = (d.pick_time && d.apparatus && state.status === 'in_progress') ? String(d.apparatus) : null;
@@ -388,6 +404,34 @@
         focusInput(keepFocus); scroll();
       });
   }
+
+  // Відповіді оператора реєстратури. Коли оператор приймає діалог у системі, його повідомлення і прапорець taken
+  // приходять через n8n (токен журналу лишається на сервері). Опитування лише поки чат відкритий і розмова почалась.
+  var pollBusy = false;
+  function pollOperator() {
+    if (pollBusy || !state.open || state.mode !== 'chat' || !state.messages.length || document.hidden) { return; }
+    pollBusy = true;
+    var ep = resetEpoch;
+    fetch(OPERATOR_ENDPOINT + '?session_id=' + encodeURIComponent(state.session_id) + (state.op_cursor ? '&since=' + encodeURIComponent(state.op_cursor) : ''))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (ep !== resetEpoch || !d || d.ok === false) { return; }
+        var changed = false;
+        (Array.isArray(d.messages) ? d.messages : []).forEach(function (m) {
+          if (!m || !m.text || (m.author && m.author !== 'operator')) { return; }
+          if (m.id && state.messages.some(function (x) { return x.id === m.id; })) { return; }
+          state.messages.push({ role: 'assistant', content: String(m.text), from: 'operator', id: m.id || '' });
+          if (state.status !== 'in_progress') { state.status = 'in_progress'; }
+          changed = true;
+        });
+        if (d.cursor) { state.op_cursor = d.cursor; }
+        if (typeof d.taken === 'boolean' && d.taken !== !!state.taken) { state.taken = d.taken; changed = true; }
+        if (changed) { save(); if (!busy) { render(); } }
+      })
+      .catch(function () {})
+      .then(function () { pollBusy = false; });
+  }
+  setInterval(pollOperator, POLL_MS);
 
   /* ---------- форма швидкого запису ---------- */
   var formDone = null;   // відповідь сервера після успішної відправки
