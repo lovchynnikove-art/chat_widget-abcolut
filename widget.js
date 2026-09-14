@@ -38,7 +38,7 @@
     return fresh();
   }
   function fresh() {
-    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, escalated: false, updated: Date.now() };
+    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, escalated: false, pick: null, slot: null, updated: Date.now() };
   }
   function save() {
     state.updated = Date.now();
@@ -262,13 +262,15 @@
         box.appendChild(fb);
       }
       if (box.children.length) { body.appendChild(box); }
+      if (state.pick) { body.appendChild(pickBox(state.pick)); }
     }
     if (state.booked) {
       var ok = document.createElement('div'); ok.className = 'bookok';
       ok.innerHTML = '<b>Час заброньовано: ' + esc(state.booked.label) + '</b>' + (state.booked.place ? '<br>' + esc(state.booked.place) : '') + (state.booked.escalated ? '<br>Час попередній: оператор передзвонить після узгодження з радіологом і підтвердить запис.' : '<br>Оператор передзвонить і підтвердить запис.');
       body.appendChild(ok);
-    } else if (ended && state.booking && state.booking.apparatus && state.status === 'done') {
-      body.appendChild(bookBox());
+    } else if (ended && chatBusy) {
+      var bw = document.createElement('div'); bw.className = 'bookbox'; bw.innerHTML = '<div class="bh">Бронюю обраний час...</div>';
+      body.appendChild(bw);
     }
     if (ended) {
       var r = document.createElement('button'); r.className = 'restart'; r.type = 'button';
@@ -287,10 +289,11 @@
 
   /* ---------- чат: відправка ---------- */
   var chatSlots = null, chatSlotsKey = '', chatDay = '', chatBusy = false;
-  function bookBox() {
+  // Вибір дня і години з календаря прямо в розмові: показується, коли Оля питає день і час, а апарат відомий (pick_time).
+  // Обраний час іде Олі як відповідь пацієнта, а бронюється автоматично після її прощальної фрази.
+  function pickBox(key) {
     var box = document.createElement('div'); box.className = 'bookbox';
-    var key = state.booking.apparatus;
-    var head = '<b>Обрати точний час</b>';
+    var head = '<b>Вільні дні та години</b>';
     if (chatSlotsKey !== key) {
       chatSlotsKey = key; chatSlots = 'loading'; chatDay = '';
       fetch(SLOTS_ENDPOINT + '?apparatus=' + key)
@@ -299,9 +302,12 @@
         .catch(function () { chatSlots = 'error'; })
         .then(function () { render(); });
     }
-    if (chatSlots === 'loading' || chatSlots === null) { box.innerHTML = head + '<div class="bh">Дивлюсь вільні години...</div>'; return box; }
-    if (chatSlots === 'error') { box.innerHTML = head + '<div class="bh">Розклад зараз недоступний. Оператор підбере час і передзвонить.</div>'; return box; }
-    box.innerHTML = head + '<div class="bh">' + esc(chatSlots.label) + ', ' + esc(chatSlots.place) + '. Оберіть день, потім годину.' + (state.booking.escalated ? ' Час буде попереднім: його підтвердять після узгодження з радіологом.' : '') + ' Можна пропустити, тоді час підбере оператор.</div>';
+    if (chatSlots === 'loading' || chatSlots === null) { box.innerHTML = head + '<div class="bh">Дивлюсь вільні години в календарі...</div>'; return box; }
+    if (chatSlots === 'error') {
+      box.innerHTML = head + '<div class="bh">Календар зараз недоступний. Напишіть бажаний день і час, оператор підбере і передзвонить.</div>';
+      return box;
+    }
+    box.innerHTML = head + '<div class="bh">' + esc(chatSlots.label) + ', ' + esc(chatSlots.place) + '. Оберіть день, потім годину.' + (state.escalated ? ' Час буде попереднім: його підтвердять після узгодження з радіологом.' : '') + '</div>';
     var days = document.createElement('div'); days.className = 'chips';
     chatSlots.days.forEach(function (d) {
       var b = document.createElement('button'); b.type = 'button'; b.textContent = d.label;
@@ -314,34 +320,40 @@
     if (dd) {
       var times = document.createElement('div'); times.className = 'chips';
       dd.slots.forEach(function (sl) {
-        var b = document.createElement('button'); b.type = 'button'; b.textContent = sl.label; b.disabled = chatBusy;
-        b.addEventListener('click', function () { bookSlot(sl.start); });
+        var b = document.createElement('button'); b.type = 'button'; b.textContent = sl.label;
+        b.addEventListener('click', function () {
+          state.slot = { apparatus: key, start: sl.start, label: dd.label + ', ' + sl.label };
+          state.pick = null; chatDay = '';
+          send(state.slot.label);
+        });
         times.appendChild(b);
       });
       box.appendChild(times);
     }
     var skip = document.createElement('button'); skip.type = 'button'; skip.className = 'skip';
-    skip.textContent = 'Пропустити, хай підбере оператор';
-    skip.addEventListener('click', function () { state.booking = null; save(); render(); });
+    skip.textContent = 'Мені все одно, хай підбере оператор';
+    skip.addEventListener('click', function () { state.slot = null; state.pick = null; send('Мені все одно, хай підбере оператор'); });
     box.appendChild(skip);
     return box;
   }
-  function bookSlot(start) {
-    if (chatBusy) { return; }
+  // Після прощальної фрази обраний у розмові час бронюється сам, з телефоном із заявки.
+  function bookChosenSlot() {
+    var slot = state.slot, booking = state.booking || {};
+    if (!slot || chatBusy) { return; }
     chatBusy = true; render();
     var ep = resetEpoch;
-    var payload = { apparatus: state.booking.apparatus, start: start, patient: 'Пацієнт із чату', phone: state.booking.phone || '', exam: state.booking.escalated ? 'потрібне узгодження радіолога, деталі в заявці' : 'запис із чат-віджета, деталі в заявці', source: 'чат ' + SITE, session_id: 'chat-' + state.session_id };
+    var payload = { apparatus: slot.apparatus, start: slot.start, patient: 'Пацієнт із чату', phone: booking.phone || '', exam: state.escalated ? 'потрібне узгодження радіолога, деталі в заявці' : 'запис із чат-віджета, деталі в заявці', source: 'чат ' + SITE, session_id: 'chat-' + state.session_id };
     fetch(BOOK_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (ep !== resetEpoch) { return; }
-        chatBusy = false;
-        if (d && d.ok) { state.booked = { label: d.label, place: d.place, escalated: !!state.booking.escalated }; state.booking = null; save(); render(); return; }
-        chatSlotsKey = ''; chatSlots = null; render();
-        add('err', (d && d.reason ? 'Цей час уже зайняли. ' : '') + 'Оберіть, будь ласка, інший.');
+        chatBusy = false; state.slot = null;
+        if (d && d.ok) { state.booked = { label: d.label, place: d.place, escalated: !!state.escalated }; save(); render(); return; }
+        save(); render();
+        add('err', (d && d.reason ? 'Цей час щойно зайняли. ' : 'Не вдалося забронювати час. ') + 'Оператор підбере інший і передзвонить вам.');
         scroll();
       })
-      .catch(function () { if (ep !== resetEpoch) { return; } chatBusy = false; render(); add('err', 'Не вдалося забронювати час. Оператор передзвонить і підбере.'); scroll(); });
+      .catch(function () { if (ep !== resetEpoch) { return; } chatBusy = false; state.slot = null; save(); render(); add('err', 'Не вдалося забронювати час. Оператор підбере його і передзвонить вам.'); scroll(); });
   }
   // Після відповіді курсор повертається в поле вводу: на комп'ютері завжди, на телефоні тільки якщо пацієнт друкував,
   // щоб після натискання кнопки не вискакувала клавіатура.
@@ -355,8 +367,8 @@
     if (!text || busy || state.status !== 'in_progress') { return; }
     if (text.length > 1000) { text = text.slice(0, 1000); }
     state.messages.push({ role: 'user', content: text });
-    var prevButtons = state.buttons || [];
-    state.buttons = []; save();
+    var prevButtons = state.buttons || [], prevPick = state.pick;
+    state.buttons = []; state.pick = null; save();
     ta.value = ''; ta.style.height = 'auto';
     var keepFocus = root.activeElement === ta;
     busy = true; render();
@@ -375,12 +387,14 @@
         state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress';
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
         if (d.escalated) { state.escalated = true; }
+        state.pick = (d.pick_time && d.apparatus && state.status === 'in_progress') ? String(d.apparatus) : null;
         busy = false; save(); render(); focusInput(keepFocus);
+        if (state.status === 'done' && state.slot) { bookChosenSlot(); }
       })
       .catch(function (err) {
         if (ep !== resetEpoch) { return; }
         state.messages.pop();
-        state.buttons = prevButtons;
+        state.buttons = prevButtons; state.pick = prevPick;
         busy = false; save(); render();
         add('err', err && err.server
           ? 'Технічна помилка на нашому боці. Спробуйте, будь ласка, ще раз за хвилину.'
