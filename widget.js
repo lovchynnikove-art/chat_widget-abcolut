@@ -166,9 +166,14 @@
     + '.done .ok b{display:block;font-size:16px;margin-bottom:6px;color:' + COLOR + '}'
     + '.done .esc{background:#fff8e6;border:1px solid #f3dfae;color:#6b4e00;border-radius:10px;padding:8px 10px}'
     + '.done p{background:#fff;border-radius:12px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
-    + '@media (max-width:640px){.am{right:0;bottom:0}.launch{margin:0 16px 16px 0}'
-    + '.am .am-panel,.am.fm .am-panel{position:fixed;left:0;top:0;right:0;bottom:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100dvh;border-radius:0;box-shadow:none}'
-    + '.am-head{padding-top:max(14px,env(safe-area-inset-top))}}'
+    + '@media (max-width:640px){.am{right:0;bottom:0;-webkit-text-size-adjust:100%;text-size-adjust:100%}.launch{margin:0 16px 16px 0}'
+    + '.am .am-panel,.am.fm .am-panel{position:fixed;left:0;top:0;right:0;bottom:auto;width:100%;max-width:100%;height:100vh;height:100dvh;max-height:none;border-radius:0;box-shadow:none;overscroll-behavior:contain}'
+    + '.am-head{padding-top:max(14px,env(safe-area-inset-top))}'
+    /* iPhone: поле вводу зі шрифтом менше 16px Safari збільшує при фокусі, і чат «пливе» */
+    + 'textarea,.f input[type=text],.f input[type=tel],.f select{font-size:16px}'
+    + '.am-body{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}'
+    + '.am-foot{padding-bottom:max(6px,env(safe-area-inset-bottom))}'
+    + 'button{touch-action:manipulation}}'
 
   var ICON_CHAT = '<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-6.5A8 8 0 1 1 21 12z"/></svg>';
   var ICON_FORM = '<svg viewBox="0 0 24 24"><path d="M9 5h6M9 3h6v4H9zM5 6h1v15h12V6h1"/><path d="M8 12h8M8 16h5"/></svg>';
@@ -209,10 +214,35 @@
   });
   ta.addEventListener('input', function () { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'; });
 
+  // Телефон (ширина до 640px): чат на весь екран тримається рівно у видимій області (visualViewport). Коли на iPhone
+  // відкривається клавіатура або ховається панель браузера, шапка і поле вводу не «пливуть», а сайт під чатом не прокручується.
+  var panel = root.querySelector('.am-panel');
+  var vv = window.visualViewport || null;
+  var pageLocked = false, pageOverflow = ['', ''];
+  function isPhone() { return !!(window.matchMedia && window.matchMedia('(max-width:640px)').matches); }
+  function fitPhone() {
+    var on = wrap.classList.contains('open') && isPhone();
+    if (on && vv) { panel.style.height = Math.round(vv.height) + 'px'; panel.style.top = Math.round(vv.offsetTop) + 'px'; }
+    else { panel.style.height = ''; panel.style.top = ''; }
+    var de = document.documentElement, bd = document.body;
+    if (on && !pageLocked) {
+      pageOverflow = [de.style.overflow, bd ? bd.style.overflow : ''];
+      de.style.overflow = 'hidden'; if (bd) { bd.style.overflow = 'hidden'; }
+      pageLocked = true;
+    } else if (!on && pageLocked) {
+      de.style.overflow = pageOverflow[0]; if (bd) { bd.style.overflow = pageOverflow[1]; }
+      pageLocked = false;
+    }
+  }
+  if (vv) { vv.addEventListener('resize', fitPhone); vv.addEventListener('scroll', fitPhone); }
+  window.addEventListener('resize', fitPhone);
+  window.addEventListener('orientationchange', fitPhone);
+
   function setMode(m) { state.mode = m; save(); }
   function setOpen(v) {
     state.open = v; save();
     wrap.classList.toggle('open', v);
+    fitPhone();
     if (v) { render(); if (state.mode === 'chat') { setTimeout(function () { ta.focus(); }, 50); } }
   }
 
