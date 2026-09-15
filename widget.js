@@ -791,7 +791,6 @@
     var h = '<div class="done"><div class="ok"><b>Дякуємо' + (d.name ? ', ' + esc(d.name) : '') + '. Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
     if (d.booked) { h += '<div class="booked">Запис створено: <b>' + esc(d.booked_label || '') + '</b>' + (d.place ? ', ' + esc(d.place) : '') + '. Оператор передзвонить і підтвердить.</div>'; }
     else if (d.slot_taken) { h += '<div class="esc">На жаль, обраний час щойно зайняли. Оператор передзвонить і запропонує найближчий вільний.</div>'; }
-    if (d.escalation) { h += '<div class="esc">З цим питанням має розібратися наш лікар. Радіолог зателефонує вам.</div>'; }
     (d.notes || []).forEach(function (n) { h += '<p>' + esc(n) + '</p>'; });
     if ((d.preparation || []).length) { h += '<h4>Підготовка</h4>'; }
     (d.preparation || []).forEach(function (p) { h += '<p>' + esc(p) + '</p>'; });
