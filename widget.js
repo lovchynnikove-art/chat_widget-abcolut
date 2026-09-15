@@ -40,7 +40,7 @@
     return fresh();
   }
   function fresh() {
-    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, escalated: false, pick: null, slot: null, taken: false, op_cursor: null, updated: Date.now() };
+    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, escalated: false, pick: null, slot: null, taken: false, handoff: false, op_cursor: null, updated: Date.now() };
   }
   function save() {
     state.updated = Date.now();
@@ -286,8 +286,10 @@
       if (m.from === 'operator') { addOperator(m.content); } else { add(m.role === 'user' ? 'u' : 'a', m.content); }
     });
     // Діалог прийняв оператор реєстратури: розмова триває, навіть якщо Оля вже попрощалась.
-    if (state.taken) { var bar = document.createElement('div'); bar.className = 'opbar'; bar.textContent = 'Вам відповідає оператор реєстратури'; body.appendChild(bar); }
-    var ended = state.status !== 'in_progress' && !state.taken;
+    // Оля передала розмову оператору, а він ще не взяв діалог: поле вводу теж відкрите, репліки пацієнта чекають оператора.
+    var opText = state.taken ? 'Вам відповідає оператор реєстратури' : (state.handoff ? 'Розмову передано оператору реєстратури' : '');
+    if (opText) { var bar = document.createElement('div'); bar.className = 'opbar'; bar.textContent = opText; body.appendChild(bar); }
+    var ended = state.status !== 'in_progress' && !state.taken && !state.handoff;
     if (!ended && !busy) {
       var box = document.createElement('div'); box.className = 'btns';
       (state.buttons || []).forEach(function (b) {
@@ -385,9 +387,13 @@
     var finePointer = !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
     if (wasFocused || finePointer) { ta.focus(); }
   }
+  // Фрази, якими Оля передає розмову оператору в чаті (промпт чату, «Якщо пацієнт заперечує або нервує»); звіряє verify_prompts.py.
+  var HANDOFF_RE = /відповість вам тут,? у чаті/i;
+  // Оператор відпустив діалог: далі знову відповідає Оля, передача оператору знята.
+  function setTaken(v) { if (state.taken && !v) { state.handoff = false; } state.taken = v; }
   function send(text) {
     text = String(text || '').trim();
-    if (!text || busy || (state.status !== 'in_progress' && !state.taken)) { return; }
+    if (!text || busy || (state.status !== 'in_progress' && !state.taken && !state.handoff)) { return; }
     if (text.length > 1000) { text = text.slice(0, 1000); }
     state.messages.push({ role: 'user', content: text });
     var prevButtons = state.buttons || [], prevPick = state.pick;
@@ -399,17 +405,19 @@
     body.appendChild(typing); scroll();
 
     var ep = resetEpoch;
-    var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60), escalated: !!state.escalated, slot: state.slot || null };
+    var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60), escalated: !!state.escalated, slot: state.slot || null, handoff: !!state.handoff };
     fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) { var he = new Error('HTTP ' + r.status); he.server = true; throw he; } return r.json(); })
       .then(function (d) {
         if (ep !== resetEpoch) { return; }
         if (!d || typeof d.reply !== 'string') { var be = new Error('bad response'); be.server = true; throw be; }
-        // Діалог в оператора: Оля мовчить, відповідь оператора прийде опитуванням.
-        if (d.operator || d.taken) { state.taken = true; }
+        // Діалог в оператора або передано оператору: Оля мовчить, відповідь оператора прийде опитуванням.
+        if (typeof d.taken === 'boolean') { setTaken(d.taken); }
         if (d.reply) { state.messages.push({ role: 'assistant', content: d.reply }); }
         state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 6).map(function (b) { return String(b).slice(0, 40); }) : [];
         if (!d.operator) { state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress'; }
+        // Оля передала розмову оператору в чаті: для пацієнта розмова не закінчена, наступні репліки йдуть оператору з handoff.
+        if (!d.operator && state.status === 'transfer' && state.messages.slice(-3).some(function (m) { return m.role === 'assistant' && !m.from && HANDOFF_RE.test(m.content); })) { state.handoff = true; }
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
         if (d.escalated) { state.escalated = true; }
         state.pick = (d.pick_time && d.apparatus && state.status === 'in_progress') ? String(d.apparatus) : null;
@@ -455,7 +463,7 @@
           changed = true;
         });
         if (d.cursor) { state.op_cursor = d.cursor; }
-        if (typeof d.taken === 'boolean' && d.taken !== !!state.taken) { state.taken = d.taken; changed = true; }
+        if (typeof d.taken === 'boolean' && d.taken !== !!state.taken) { setTaken(d.taken); changed = true; }
         if (changed) { save(); if (!busy) { render(); } }
       })
       .catch(function () {})
