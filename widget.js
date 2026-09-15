@@ -507,9 +507,14 @@
       + fld('girth', 'Обхват тіла в найгрубшому місці при опущених руках', chips('girth', ['До 140 см', '140-160 см', 'Понад 160 см'], 'seg'), 'mri')
       + fld('knee', 'Обхват у ділянці коліна', chips('knee', ['До 45 см', '45-59 см', 'Понад 59 см'], 'seg'), 'mri knee')
       + '<h4 data-if="mri contrast ct">Відмітьте, якщо стосується</h4>'
-      + swRow('implants', 'Металеві імпланти, стенти, пластини або осколки', 'mri')
-      + swRow('implants_docs', 'На них є паспорт або довідка лікаря', 'mri implants')
-      + swRow('pacemaker', 'Кардіостимулятор або дефібрилятор', 'mri')
+      + swRow('pacemaker', 'Кардіостимулятор', 'mri')
+      + swRow('defibrillator', 'Дефібрилятор', 'mri')
+      + swRow('neurostimulator', 'Нейростимулятор', 'mri')
+      + swRow('stents', 'Стенти', 'mri')
+      + swRow('joint_prosthesis', 'Суглобові протези', 'mri')
+      + swRow('metal_fragments', 'Металеві осколки', 'mri')
+      + swRow('implants', 'Інші металеві імпланти або пластини', 'mri')
+      + swRow('implants_docs', 'На імпланти є паспорт або довідка лікаря', 'mri implants')
       + swRow('lens', 'Імплантований кришталик ока', 'mri')
       + swRow('lens_recent', 'Операції на оці менше 3 місяців', 'mri lens')
       + swRow('cannot_lie', 'Важко лежати нерухомо 20-40 хвилин', 'mri')
@@ -552,7 +557,7 @@
     return {
       mri: mri, ct: ct, contrast: contrast,
       knee: /колін/.test(z), prostate: /простат/.test(z), liver: /печінк/.test(z),
-      implants: !!v.implants, lens: !!v.lens, biopsy: !!v.biopsy,
+      implants: !!(v.implants || v.stents || v.joint_prosthesis || v.metal_fragments), lens: !!v.lens, biopsy: !!v.biopsy,
       gfr_has: v.gfr === 'Є, ШКФ у нормі' || v.gfr === 'Є, ШКФ низька',
       referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast)))
     };
@@ -753,6 +758,7 @@
         modality: v.modality, zone: zoneText(v), apparatus: v.apparatus, contrast: v.contrast.toLowerCase(),
         for_other: v.for_other, age: v.age, weight_band: v.weight, girth_band: v.girth, knee_band: v.knee,
         implants: v.implants, implants_docs: v.implants_docs, pacemaker: v.pacemaker, lens: v.lens, lens_recent: v.lens_recent,
+        defibrillator: v.defibrillator, neurostimulator: v.neurostimulator, stents: v.stents, joint_prosthesis: v.joint_prosthesis, metal_fragments: v.metal_fragments,
         cannot_lie: v.cannot_lie, claustro: v.claustro, biopsy: v.biopsy, biopsy_recent: v.biopsy_recent, primovist: v.primovist,
         gfr_status: v.gfr, gfr_old: v.gfr_old, anemia: v.anemia, lactation: v.lactation, pregnancy: v.pregnancy,
         referral: v.referral.toLowerCase(),
