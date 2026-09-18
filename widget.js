@@ -335,6 +335,21 @@
   // Вибір дня і години з календаря прямо в розмові: показується, коли Оля питає день і час, а апарат відомий (pick_time).
   // Обраний час іде Олі як відповідь пацієнта і разом з кожним запитом; після прощальної фрази n8n бронює його
   // сам і повертає booked, тому заявка в Telegram уже містить заброньований час.
+  // Обстеження з контрастом: у списку лише години контрасту (клієнт 17.09), як на сервері: КТ і МРТ 1,5 Тл пн-пт 9:00-14:40,
+  // МРТ 3 Тл пн-пт 16:00-18:30, у суботу контрасту немає. Контраст розмови приходить від сервера полем contrast.
+  var CONTRAST_HOURS = { ct: [540, 880], mri15: [540, 880], mri3: [960, 1110] };
+  function chatDaysFor(key) {
+    if (state.contrast !== 'так') { return chatSlots.days; }
+    var w = CONTRAST_HOURS[key];
+    return chatSlots.days.map(function (d) {
+      var wd = new Date(d.date + 'T12:00:00Z').getUTCDay();
+      var sl = (w && wd >= 1 && wd <= 5) ? d.slots.filter(function (x) {
+        var hm = String(x.label).split(':'); var m = +hm[0] * 60 + +hm[1];
+        return m >= w[0] && m <= w[1];
+      }) : [];
+      return { date: d.date, label: d.label, slots: sl };
+    }).filter(function (d) { return d.slots.length; });
+  }
   function pickBox(key) {
     var box = document.createElement('div'); box.className = 'bookbox';
     var head = '<b>Вільні дні та години</b>';
@@ -351,16 +366,19 @@
       box.innerHTML = head + '<div class="bh">Календар зараз недоступний. Напишіть бажаний день і час, оператор підбере і передзвонить.</div>';
       return box;
     }
-    box.innerHTML = head + '<div class="bh">' + esc(chatSlots.label) + ', ' + esc(chatSlots.place) + '. Оберіть день, потім годину.' + (state.escalated ? ' Час буде попереднім: його підтвердять після узгодження з радіологом.' : '') + '</div>';
+    var daysList = chatDaysFor(key);
+    box.innerHTML = head + '<div class="bh">' + esc(chatSlots.label) + ', ' + esc(chatSlots.place) + '. '
+      + (state.contrast === 'так' ? (daysList.length ? 'Показано години для обстеження з контрастом. ' : 'Вільних годин для обстеження з контрастом найближчими днями немає. Напишіть бажаний день, оператор підбере час. ') : '')
+      + 'Оберіть день, потім годину.' + (state.escalated ? ' Час буде попереднім: його підтвердять після узгодження з радіологом.' : '') + '</div>';
     var days = document.createElement('div'); days.className = 'chips';
-    chatSlots.days.forEach(function (d) {
+    daysList.forEach(function (d) {
       var b = document.createElement('button'); b.type = 'button'; b.textContent = d.label;
       if (d.date === chatDay) { b.className = 'on'; }
       b.addEventListener('click', function () { chatDay = (chatDay === d.date ? '' : d.date); render(); });
       days.appendChild(b);
     });
     box.appendChild(days);
-    var dd = chatSlots.days.filter(function (x) { return x.date === chatDay; })[0];
+    var dd = daysList.filter(function (x) { return x.date === chatDay; })[0];
     if (dd) {
       var times = document.createElement('div'); times.className = 'chips';
       dd.slots.forEach(function (sl) {
@@ -420,6 +438,7 @@
         if (!d.operator && state.status === 'transfer' && state.messages.slice(-3).some(function (m) { return m.role === 'assistant' && !m.from && HANDOFF_RE.test(m.content); })) { state.handoff = true; }
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
         if (d.escalated) { state.escalated = true; }
+        if (d.contrast === 'так' || d.contrast === 'ні') { state.contrast = d.contrast; }
         state.pick = (d.pick_time && d.apparatus && state.status === 'in_progress') ? String(d.apparatus) : null;
         // Час, який Оля знайшла в календарі за словами пацієнта: зберігається, як обраний зі списку.
         if (d.slot && d.slot.start) { state.slot = { apparatus: String(d.slot.apparatus || ''), start: String(d.slot.start), label: String(d.slot.label || '') }; }
