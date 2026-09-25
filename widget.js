@@ -40,7 +40,7 @@
     return fresh();
   }
   function fresh() {
-    return { session_id: uid(), messages: [], status: 'in_progress', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, escalated: false, pick: null, slot: null, taken: false, handoff: false, op_cursor: null, updated: Date.now() };
+    return { session_id: uid(), messages: [], status: 'in_progress', closed: '', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, booked: null, escalated: false, pick: null, slot: null, taken: false, handoff: false, op_cursor: null, updated: Date.now() };
   }
   function save() {
     state.updated = Date.now();
@@ -289,8 +289,12 @@
     // Оля передала розмову оператору, а він ще не взяв діалог: поле вводу теж відкрите, репліки пацієнта чекають оператора.
     var opText = state.taken ? 'Вам відповідає оператор реєстратури' : (state.handoff ? 'Розмову передано оператору реєстратури' : '');
     if (opText) { var bar = document.createElement('div'); bar.className = 'opbar'; bar.textContent = opText; body.appendChild(bar); }
+    // 25.09: Оля попрощалась, але розмова не закривається: пацієнт може питати далі, як у помічника. Поле вводу відкрите,
+    // «Розпочати нову розмову» лише пропонується.
     var ended = state.status !== 'in_progress' && !state.taken && !state.handoff;
-    if (!ended && !busy) {
+    // Заявку на обстеження вже оформлено («done»): друге обстеження — у новій розмові, тож кнопку видно й тоді, коли пацієнт пише далі.
+    var offerNew = ended || (state.closed === 'done' && !state.taken && !state.handoff);
+    if (!busy) {
       var box = document.createElement('div'); box.className = 'btns';
       (state.buttons || []).forEach(function (b) {
         var btn = document.createElement('button'); btn.type = 'button'; btn.textContent = b;
@@ -303,21 +307,21 @@
         box.appendChild(fb);
       }
       if (box.children.length) { body.appendChild(box); }
-      if (state.pick) { body.appendChild(pickBox(state.pick)); }
+      if (state.pick && !ended) { body.appendChild(pickBox(state.pick)); }
     }
     if (state.booked) {
       var ok = document.createElement('div'); ok.className = 'bookok';
       ok.innerHTML = '<b>Час заброньовано: ' + esc(state.booked.label) + '</b>' + (state.booked.place ? '<br>' + esc(state.booked.place) : '') + (state.booked.escalated ? '<br>Час попередній: оператор передзвонить після узгодження з радіологом і підтвердить запис.' : '<br>Оператор передзвонить і підтвердить запис.');
       body.appendChild(ok);
     }
-    if (ended) {
+    if (offerNew) {
       var r = document.createElement('button'); r.className = 'restart'; r.type = 'button';
       r.textContent = 'Розпочати нову розмову';
       r.addEventListener('click', function () { var m = state.mode; state = fresh(); state.open = true; state.mode = m; save(); render(); });
       body.appendChild(r);
     }
-    ta.disabled = ended || busy; sendBtn.disabled = ended || busy;
-    ta.placeholder = ended ? 'Розмову завершено' : 'Надіслати повідомлення...';
+    ta.disabled = busy; sendBtn.disabled = busy;
+    ta.placeholder = 'Надіслати повідомлення...';
     scroll();
   }
   function add(cls, text) {
@@ -411,7 +415,7 @@
   function setTaken(v) { if (state.taken && !v) { state.handoff = false; } state.taken = v; }
   function send(text) {
     text = String(text || '').trim();
-    if (!text || busy || (state.status !== 'in_progress' && !state.taken && !state.handoff)) { return; }
+    if (!text || busy) { return; }
     if (text.length > 1000) { text = text.slice(0, 1000); }
     state.messages.push({ role: 'user', content: text });
     var prevButtons = state.buttons || [], prevPick = state.pick;
@@ -423,7 +427,9 @@
     body.appendChild(typing); scroll();
 
     var ep = resetEpoch;
-    var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60), escalated: !!state.escalated, slot: state.slot || null, handoff: !!state.handoff };
+    // closed: завершальний статус, з яким заявку вже передано (25.09): сервер не шле другу заявку, коли пацієнт просто пише далі.
+    // anketa: модальність, ділянка, контраст, вік, вага, стать, ім'я з попередньої відповіді (25.09): з них сервер рахує ескалацію й анкету.
+    var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60), escalated: !!state.escalated, slot: state.slot || null, handoff: !!state.handoff, closed: state.closed || '', anketa: state.anketa || {} };
     fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) { var he = new Error('HTTP ' + r.status); he.server = true; throw he; } return r.json(); })
       .then(function (d) {
@@ -434,10 +440,13 @@
         if (d.reply) { state.messages.push({ role: 'assistant', content: d.reply }); }
         state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 6).map(function (b) { return String(b).slice(0, 40); }) : [];
         if (!d.operator) { state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress'; }
+        if (typeof d.closed === 'string') { state.closed = d.closed; }
+        if (d.anketa && typeof d.anketa === 'object' && !Array.isArray(d.anketa)) { state.anketa = d.anketa; }
         // Оля передала розмову оператору в чаті: для пацієнта розмова не закінчена, наступні репліки йдуть оператору з handoff.
         if (!d.operator && state.status === 'transfer' && state.messages.slice(-3).some(function (m) { return m.role === 'assistant' && !m.from && HANDOFF_RE.test(m.content); })) { state.handoff = true; }
         if (d.booking && d.booking.apparatus && !state.booked) { state.booking = d.booking; }
-        if (d.escalated) { state.escalated = true; }
+        // 25.09: ескалацію рахує сервер за відповідями пацієнта: виправлена відповідь її знімає, тому прапорець не «липне».
+        if (typeof d.escalated === 'boolean') { state.escalated = d.escalated; }
         if (d.contrast === 'так' || d.contrast === 'ні') { state.contrast = d.contrast; }
         state.pick = (d.pick_time && d.apparatus && state.status === 'in_progress') ? String(d.apparatus) : null;
         // Час, який Оля знайшла в календарі за словами пацієнта: зберігається, як обраний зі списку.
