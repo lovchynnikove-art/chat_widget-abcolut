@@ -10,13 +10,14 @@
   var script = document.currentScript;
   var ds = (script && script.dataset) || {};
   var ENDPOINT = ds.endpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-chat';
-  var FORM_ENDPOINT = ds.formEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-form';
+  // 07.10: форма 2.0 (ділянки й пороги головної Олі) — свій вебхук; стара форма /absolutmed-form лишилась для widget.js.
+  var FORM_ENDPOINT = ds.formEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-form2';
   var COLOR = ds.color || '#0077b3';
   var SITE = ds.site || location.hostname;
   var TITLE = ds.title || 'Онлайн-чат АбсолютМед';
   var BRAND = ds.brand || 'АбсолютМед';
   var STORE_KEY = 'absolutmed_chat_v1';
-  var FORM_KEY = 'absolutmed_form_v1';
+  var FORM_KEY = 'absolutmed_form_v3';
   var TTL_MS = 6 * 3600 * 1000;
 
   var GREETING = 'Доброго дня! Медичний центр Абсолют, мене звати Оля, я віртуальний асистент реєстратури. Листування зберігається і передається реєстратурі. Скажіть, будь ласка, чим можу допомогти?';
@@ -166,6 +167,9 @@
     + '.chk{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1px solid #e6e9ee;border-radius:12px;cursor:pointer;line-height:1.35}'
     + '.chk input{margin-top:2px;flex:none;width:18px;height:18px;accent-color:' + COLOR + '}'
     + '.f .hint{font-size:12px;color:#7a8594;margin-top:6px}'
+    + '.apnote{background:#eef6fb;border:1px solid #cfe3f0;color:#1f4a66;border-radius:10px;padding:8px 10px;font-size:13px;margin-top:8px}'
+    + '.agestop{background:#fff4f2;border:1px solid #f3cbc4;color:#7a2a1d;border-radius:10px;padding:8px 10px;font-size:13px;margin-top:10px}'
+    + '.chips button:disabled{opacity:.4;cursor:not-allowed}'
     + '.exact{display:flex;align-items:center;gap:10px;margin-top:8px}.exact input{width:130px!important}.exact span{color:#5b6675;font-size:13px}'
     + '.done .booked{background:#e8f5ee;border:1px solid #bfe3cf;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px}'
     + '.fld .fe{margin-top:6px;font-size:12.5px;color:#c0392b}'
@@ -417,15 +421,19 @@
   function loadDraft() { try { return JSON.parse(sessionStorage.getItem(FORM_KEY) || '{}') || {}; } catch (e) { return {}; } }
   function saveDraft(v) { try { sessionStorage.setItem(FORM_KEY, JSON.stringify(v)); } catch (e) {} }
 
-  var ZONE_GROUPS = [
-    ['Голова', ['Головний мозок', 'Гіпофіз', 'Орбіти', 'Пазухи носа', 'Вуха', 'Лицьовий скелет', 'Скронево-щелепні суглоби']],
-    ['Хребет', ['Шийний відділ', 'Грудний відділ', 'Поперековий відділ', 'Крижі і куприк', 'Спинний мозок', 'Увесь хребет']],
-    ['Суглоби', ['Плечовий суглоб', 'Ліктьовий суглоб', 'Кисть і зап’ясток', 'Кульшовий суглоб', 'Колінний суглоб', 'Гомілково-ступневий суглоб', 'Стопа']],
-    ['Шия і груди', ['М’які тканини шиї', 'Органи грудної клітки', 'Грудні залози', 'Серце', 'Грудина і ключиці']],
-    ['Живіт', ['Черевна порожнина', 'Печінка', 'Підшлункова залоза', 'Нирки', 'Наднирники', 'Жовчний міхур і протоки', 'Селезінка', 'Кишківник']],
-    ['Таз', ['Органи малого таза', 'Простата', 'Матка й придатки', 'Сечовий міхур', 'Пряма кишка', 'Кістки таза']],
-    ['Судини', ['Судини головного мозку', 'Судини шиї', 'Аорта', 'Судини ніг', 'Судини нирок', 'Вени']]
-  ];
+  // ZONES-BEGIN
+// Згенеровано chat_widget/forma_zony.py з прайсу Олі 2.0 (exams.json). Не правити руками.
+// КТ: [група, [[підпис, код]]]; МРТ: [група, [[підпис, код 1,5 Тл, код 3 Тл]]] — порожній код: на цьому апараті не робимо.
+  var FORM_ZONES = {"КТ":[["Голова",[["Головний мозок","10001"],["Головний мозок і другий шийний хребець","10002"],["Орбіти","10003"],["Придаткові пазухи носа","10004"],["Вуха (пірамідки скроневих кісток)","10005"],["Лицьовий скелет","10006"],["Перфузія головного мозку","10010"]]],["Хребет",[["Шийний відділ хребта","10101"],["Грудний відділ хребта","10102"],["Попереково-крижовий відділ хребта","10103"],["Крижовий відділ хребта і куприк","10104"]]],["Суглоби й кінцівки",[["Плечовий суглоб","10121"],["Ліктьовий суглоб","10122"],["Зап'ясток","10123"],["Плече","10124"],["Передпліччя","10125"],["Кисть","10126"],["Кульшові суглоби","10151"],["Колінні суглоби","10153"],["Гомілковостопні суглоби","10154"],["Стегна","10155"],["Гомілки","10156"],["Стопи","10157"]]],["Шия",[["М'які тканини шиї","10201"]]],["Груди й серце",[["Органи грудної клітки","10301"],["Кальцієвий індекс судин серця","10302"]]],["Живіт",[["Органи черевної порожнини","10401"],["Товста кишка (КТ-колоноскопія)","10410"],["Сечовидільна система, одинарне сканування","10601"],["Сечовидільна система, подвійне сканування","10602"]]],["Таз",[["Кістки таза","10152"],["Органи малого таза","10501"],["Калитка","10510"]]],["Судини",[["Судини головного мозку","10801"],["Судини шиї","10802"],["Судини серця (КТ-коронарографія)","10803"],["Грудна аорта","10804"],["Черевна аорта","10805"],["Судини нирок","10806"],["Судини таза","10807"],["Судини кінцівок, проксимальний відділ","10808"],["Судини кінцівок, дистальний відділ","10809"],["Вени, одна ділянка","10810"]]],["Інше",[["Денситометрія (щільність кісток)","10105"],["М'які тканини, одна ділянка","10110"]]]],"МРТ":[["Голова",[["Головний мозок","15001","30001"],["Головний мозок, дегенеративні зміни","15005","30005"],["Гіпофіз","15006","30006"],["Орбіти","15012","30012"],["Придаткові пазухи носа","15013","30013"],["Вуха (пірамідки скроневих кісток)","15014","30014"],["М'які тканини голови","15017","30017"],["Слинна залоза","","30015"],["Нерви головного мозку","","30016"],["Ліквородинаміка головного мозку","","30018"],["Скронево-нижньощелепні суглоби","","30120"]]],["Хребет",[["Шийний відділ хребта","15101","30101"],["Грудний відділ хребта","15102","30102"],["Попереково-крижовий відділ хребта","15103","30103"],["Крижовий відділ хребта","15104","30104"],["Спинний мозок, одна ділянка","15105","30105"]]],["Суглоби й кінцівки",[["Плечовий суглоб","15121","30121"],["Ліктьовий суглоб","15122","30122"],["Зап'ясток","15123","30123"],["Плече","15124","30124"],["Передпліччя","15125","30125"],["Кисть","15126","30126"],["Пальці кисті","15127","30127"],["Кульшові суглоби","15151","30151"],["Крижово-клубові суглоби","15152","30152"],["Колінний суглоб","15153","30153"],["Гомілковостопний суглоб","15154","30154"],["Стегно","15155","30155"],["Гомілка","15156","30156"],["Стопа або п'ятка","15157","30157"],["Пальці стопи","15158","30158"]]],["Шия",[["М'які тканини шиї","15202","30202"],["Гортань","15203","30203"]]],["Груди й серце",[["Серце","15301","30301"],["Грудні залози","15302","30302"],["Середостіння","15303","30303"],["Груднина","15305","30305"],["Органи грудної клітки","15306","30306"],["Ключиця","15307","30307"],["Суглоби ключиці","15308","30308"],["Лопатка","15309","30309"],["Грудна стінка","15310","30310"]]],["Живіт",[["Печінка","15401","30401"],["Жовчний міхур","15402","30402"],["Жовчні протоки (МРХПГ)","15403","30403"],["Підшлункова залоза","15404","30404"],["Селезінка","15405","30405"],["Надниркові залози","15406","30406"],["Нирки","15407","30407"],["Сечоводи","15409","30409"],["Тонкий кишечник (ентерографія)","15410","30410"],["Органи черевної порожнини","15411","30411"]]],["Таз",[["Простата","15501","30501"],["Калитка","15502","30502"],["Пеніс","15503","30503"],["Матка й придатки","15504","30504"],["Пряма кишка","15505","30505"],["Сигмовидна кишка","15506","30506"],["Товста кишка","15507","30507"],["Сечовий міхур","15508","30508"],["М'язи таза","15509","30509"],["Органи малого таза","15510","30510"],["Плід (вагітність)","15511","30511"]]],["Судини",[["Артерії головного мозку","15002","30002"],["Судини, одна ділянка","15108","30108"],["Судини шиї","15201","30201"],["Магістральні судини","15304","30304"],["Ниркові артерії","15408","30408"]]],["Інше",[["Нерви, одна ділянка","15106","30106"],["Нервове сплетіння, одна ділянка","15107","30107"]]]]};
+  // ZONES-END
+  // Адреси апаратів (resources.json Олі).
+  var ADRESA = { 'КТ': 'вул. Юрія Руфа, 6', '1,5 Тесла': 'вул. Юрія Руфа, 6', '3 Тесла': 'вул. Костя Левицького, 55' };
+  function zoneGroups(mod) { return FORM_ZONES[mod] || []; }
+  // Ділянка в каталозі обраної модальності: [підпис, код] для КТ, [підпис, код 1,5, код 3] для МРТ.
+  function zoneInfo(v) {
+    var g = zoneGroups(v.modality).filter(function (x) { return x[0] === v.zone_group; })[0];
+    return g ? (g[1].filter(function (it) { return it[0] === v.zone_item; })[0] || null) : null;
+  }
 
   function chips(name, opts, cls) {
     return '<div class="chips' + (cls ? ' ' + cls : '') + '" data-chips="' + name + '">' + opts.map(function (o) { return '<button type="button" data-val="' + esc(o) + '">' + esc(o) + '</button>'; }).join('') + '</div>';
@@ -456,37 +464,38 @@
       + '<div class="note103">Якщо це невідкладний стан (ознаки інсульту, тяжка травма, гострий біль у животі, кровотеча), не заповнюйте форму, а телефонуйте 103.</div>'
       + '<h4 data-step="1">Обстеження</h4>'
       + fld('modality', 'Яке обстеження', chips('modality', ['КТ', 'МРТ'], 'seg'), '', false, 1)
-      + fld('zone', 'Що обстежуємо', chips('zone_group', ZONE_GROUPS.map(function (g) { return g[0]; })) + '<div class="sub2" data-zone-sub hidden></div>', '', false, 2)
-      + fld('apparatus', 'Апарат МРТ', chips('apparatus', ['1,5 Тесла', '3 Тесла'], 'seg') + '<div class="hint">Не впевнені, пропустіть, оператор підбере</div>', 'mri', true, 3)
+      + fld('zone', 'Що обстежуємо', '<div data-zone-box></div><div class="sub2" data-zone-sub hidden></div>', '', false, 2)
       + fld('contrast', 'Контраст', chips('contrast', ['З контрастом', 'Без контрасту'], 'seg'), '', false, 3)
       + '<h4 data-step="4">Пацієнт</h4>'
       + fld('age', 'Повних років', '<div class="agew"><input type="text" name="age" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="35" autocomplete="off"><span>років</span></div>'
+        + '<div class="agestop" data-age-note hidden></div>'
         + '<div style="margin-top:10px">' + swRow('for_other', 'Записую іншу людину') + '</div>', '', false, 4)
-      + fld('weight', 'Вага', chips('weight', ['До 100 кг', '100-120 кг', 'Понад 120 кг'], 'seg'), '', false, 5)
-      + fld('girth', 'Обхват тіла в найгрубшому місці при опущених руках', chips('girth', ['До 140 см', '140-160 см', 'Понад 160 см'], 'seg'), 'mri', false, 6)
-      + fld('knee', 'Обхват у ділянці коліна', chips('knee', ['До 45 см', '45-59 см', 'Понад 59 см'], 'seg'), 'mri knee', false, 7)
-      + '<div class="fld tgblock" data-fld="toggles" data-step="8">'
+      + fld('weight', 'Вага', chips('weight', ['До 100 кг', '100-119 кг', 'Від 120 кг'], 'seg'), '', false, 5)
+      + fld('girth', 'Обхват тіла в найгрубшому місці при опущених руках', chips('girth', ['До 140 см', '141-160 см', 'Понад 160 см'], 'seg'), 'girth_q', false, 6)
+      + fld('knee', 'Обхват у ділянці коліна', chips('knee', ['До 45 см', '46-59 см', 'Понад 59 см'], 'seg'), 'mri knee', false, 7)
+      + fld('apparatus', 'Апарат МРТ', chips('apparatus', ['1,5 Тесла', '3 Тесла'], 'seg') + '<div class="apnote" data-ap-note hidden></div><div class="hint" data-ap-hint></div>', 'mri', true, 8)
+      + '<div class="fld tgblock" data-fld="toggles" data-if="tg_any" data-step="8">'
       + '<div class="l">Відмітьте, що стосується пацієнта</div>'
       + '<div class="hint">Якщо нічого з цього, просто натисніть «Далі»</div>'
       + grp('Пристрої в тілі', 'mri',
           swRow('pacemaker', 'Кардіостимулятор', 'mri') + swRow('defibrillator', 'Дефібрилятор', 'mri') + swRow('neurostimulator', 'Нейростимулятор', 'mri'))
       + grp('Метал в тілі', 'mri',
           swRow('stents', 'Стенти', 'mri') + swRow('joint_prosthesis', 'Суглобові протези', 'mri') + swRow('metal_fragments', 'Металеві осколки', 'mri')
-          + swRow('implants', 'Інші металеві імпланти або пластини', 'mri') + swRow('implants_docs', 'На імпланти є паспорт або довідка лікаря', 'mri implants', true))
+          + swRow('implants', 'Інші металеві імпланти або пластини', 'mri') + swRow('implants_docs', 'На імпланти є паспорт чи сертифікат про сумісність із магнітним полем, або довідка лікаря', 'mri implants', true))
       + grp('Очі', 'mri',
           swRow('lens', 'Імплантований кришталик ока', 'mri') + swRow('lens_recent', 'Операція на оці менше 3 місяців тому', 'mri lens', true))
       + grp('Під час обстеження', 'mri',
           swRow('cannot_lie', 'Не зможу лежати нерухомо 20–40 хвилин', 'mri') + swRow('claustro', 'Страх закритого простору', 'mri'))
       + grp('Простата', '',
           swRow('biopsy', 'Була біопсія простати', 'mri prostate') + swRow('biopsy_recent', 'Біопсія менше 7 тижнів тому', 'mri prostate biopsy', true), 'mri prostate')
-      + grp('Печінка', '', swRow('primovist', 'Лікар призначив контраст Примовіст', 'mri liver'), 'mri liver')
-      + grp('Стан пацієнта', 'contrast ct',
-          swRow('anemia', 'Анемія, гемоглобін нижче 80', 'ct contrast') + swRow('lactation', 'Годую груддю', 'contrast') + swRow('pregnancy', 'Вагітність', 'ct'))
+      + grp('Печінка', '', swRow('primovist', 'Лікар призначив контраст Примовіст', 'mri liver contrast'), 'mri liver contrast')
+      + grp('Стан пацієнта', 'contrast preg',
+          swRow('anemia', 'Анемія', 'ct contrast') + swRow('lactation', 'Годую груддю', 'contrast') + swRow('pregnancy', 'Вагітність', 'ct preg_age'))
       + '<input type="hidden" name="tg_done">'
       + '<button type="button" class="next" data-next="tg">Далі</button>'
       + '</div>'
-      + fld('gfr', 'Аналіз на креатинін і ШКФ', chips('gfr', ['Немає', 'Є, ШКФ у нормі', 'Є, ШКФ низька'], 'seg') + '<div class="hint" data-gfr-hint></div>'
-        + '<div style="margin-top:10px">' + swRow('gfr_old', 'Аналізу більше 14 днів', 'contrast gfr_has') + '</div>', 'contrast', false, 9)
+      + fld('gfr', 'Аналіз на креатинін і ШКФ', '<div class="hint" data-gfr-need style="margin:0 0 8px"></div>'
+        + chips('gfr', ['Немає', 'Є, ШКФ у нормі', 'Є, ШКФ низька'], 'seg') + '<div class="hint" data-gfr-hint></div>', 'contrast', false, 9)
       + fld('referral', 'Скерування від лікаря', chips('referral', ['Є', 'Немає'], 'seg'), 'referral', false, 10)
       + '<h4 data-step="11">Коли зручно</h4>'
       + fld('preferred_date', 'Бажаний день', '<input type="date" name="preferred_date" min="' + dayISO(0) + '" max="' + dayISO(60) + '">', '', false, 11)
@@ -518,12 +527,19 @@
   function conds(v) {
     var z = zoneText(v).toLowerCase();
     var mri = v.modality === 'МРТ', ct = v.modality === 'КТ', contrast = v.contrast === 'З контрастом';
+    var age = /^\d{1,3}$/.test(v.age || '') ? +v.age : null;
+    // Вагітність — лише КТ і вік 16–45 (H_ANKETA vahitnist, rules.json vahitnist_vik_vid/do).
+    var preg = ct && (age === null || (age >= 16 && age <= 45));
     return {
-      mri: mri, ct: ct, contrast: contrast,
+      mri: mri, ct: ct, contrast: contrast, preg_age: age === null || (age >= 16 && age <= 45), preg: preg,
+      // Обхват тіла — лише МРТ і вага не до 100 кг (H_ANKETA obhvat).
+      girth_q: mri && !!v.weight && v.weight !== 'До 100 кг',
       knee: /колін/.test(z), prostate: /простат/.test(z), liver: /печінк/.test(z),
-      implants: !!(v.implants || v.stents || v.joint_prosthesis || v.metal_fragments), lens: !!v.lens, biopsy: !!v.biopsy,
+      implants: !!(v.implants || v.stents || v.joint_prosthesis), lens: !!v.lens, biopsy: !!v.biopsy,
       gfr_has: v.gfr === 'Є, ШКФ у нормі' || v.gfr === 'Є, ШКФ низька',
-      referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast)))
+      referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast))),
+      // Тумблери стану потрібні, лише коли є хоч один пункт анкети Олі для цього обстеження.
+      tg_any: mri || contrast || preg
     };
   }
   // Бажаний час замість вибору слота (29.09): чіткого запису немає, можливість дня і години перевіряє двигун 2.0 на сервері.
@@ -556,11 +572,11 @@
       !!v.modality,
       !!zoneText(v),
       !!v.contrast,
-      /^\d{1,3}$/.test(v.age || '') && age >= 0 && age <= 120 && ((v.age || '').length >= 2 || ageCommitted),
+      /^\d{1,3}$/.test(v.age || '') && age >= 17 && age <= 120 && ((v.age || '').length >= 2 || ageCommitted),
       !!v.weight,
-      !c.mri || !!v.girth,
+      !c.girth_q || !!v.girth,
       !(c.mri && c.knee) || !!v.knee,
-      v.tg_done === '1',
+      v.tg_done === '1' || !c.tg_any,
       !c.contrast || !!v.gfr,
       !c.referral || !!v.referral,
       !!v.preferred_date && v.preferred_date >= dayISO(0) && v.preferred_date <= dayISO(60),
@@ -599,6 +615,13 @@
       el.hidden = !show;
     });
     form.querySelectorAll('.tg').forEach(function (l) { var i = l.querySelector('input'); l.classList.toggle('on', !!(i && i.checked)); });
+    // Група тумблерів без жодного видимого рядка — ховаємо (напр. «Стан пацієнта» для КТ без контрасту у 60 років).
+    form.querySelectorAll('.grp').forEach(function (g) {
+      if (g.hidden) { return; }
+      g.hidden = ![].some.call(g.querySelectorAll('.swr'), function (r) { return !r.hidden; });
+    });
+    applyAparat(form, v, c);
+    applyAge(form, v);
     // Новий крок з'явився — плавно показуємо його.
     if (reached > lastStep && lastStep) {
       var nx = null;
@@ -609,27 +632,99 @@
     // підказка до ШКФ залежно від модальності
     var gh = form.querySelector('[data-gfr-hint]');
     if (gh) { gh.textContent = c.ct ? 'Низька для КТ: 52 мл/хв і менше' : c.mri ? 'Низька для МРТ: 32 мл/хв і менше' : ''; }
+    var gn = form.querySelector('[data-gfr-need]');
+    if (gn) { gn.textContent = c.ct ? 'Перед обстеженням з контрастом потрібні аналізи на креатинін, сечовину і гемоглобін, не старші 14 днів.' : 'Перед обстеженням з контрастом потрібні аналізи на креатинін і сечовину, не старші 14 днів.'; }
     saveDraft(v);
+  }
+  // Апарат МРТ (07.10, за Олею h2KrokAparat): кнопки лише тих апаратів, на яких роблять ділянку; обхват тіла 141–160 см —
+  // лише 3 Тесла, коліна 46–59 см — лише 1,5 Тесла; понад 160 / понад 59 або обидва в середині — апарат підбере оператор.
+  function aparatRule(v, c) {
+    if (!c.mri) { return null; }
+    var zi = zoneInfo(v);
+    var avail = zi ? [zi[1] ? '1,5 Тесла' : '', zi[2] ? '3 Тесла' : ''].filter(Boolean) : ['1,5 Тесла', '3 Тесла'];
+    var gMid = c.girth_q && v.girth === '141-160 см', gHi = c.girth_q && v.girth === 'Понад 160 см';
+    var kMid = c.knee && v.knee === '46-59 см', kHi = c.knee && v.knee === 'Понад 59 см';
+    var r = { avail: avail, fix: '', op: false, say: '' };
+    if (avail.length === 1) { r.fix = avail[0]; r.say = 'Це обстеження робимо тільки на апараті ' + avail[0] + ', ' + ADRESA[avail[0]] + '.'; }
+    if (gHi || kHi || (gMid && kMid)) { r = { avail: avail, fix: '', op: true, say: 'Апарат підбере оператор.' }; }
+    else if (gMid) { r.fix = '3 Тесла'; r.say = 'На апарат 1,5 Тесла обмеження до 140 сантиметрів, тому обстеження буде на апараті 3 Тесла, ' + ADRESA['3 Тесла'] + '.'; }
+    else if (kMid) { r.fix = '1,5 Тесла'; r.say = 'На апарат 3 Тесла обмеження до 45 сантиметрів, тому обстеження буде на апараті 1,5 Тесла, ' + ADRESA['1,5 Тесла'] + '.'; }
+    if (r.fix && avail.indexOf(r.fix) === -1) { r = { avail: avail, fix: '', op: true, say: 'Апарат підбере оператор.' }; }
+    return r;
+  }
+  function applyAparat(form, v, c) {
+    var box = form.querySelector('.chips[data-chips="apparatus"]');
+    var hint = form.querySelector('[data-ap-hint]'), note = form.querySelector('[data-ap-note]');
+    if (!box) { return; }
+    var r = aparatRule(v, c);
+    var cur = box.getAttribute('data-value') || '';
+    var nv = cur;
+    if (r && r.op) { nv = ''; } else if (r && r.fix) { nv = r.fix; } else if (r && cur && r.avail.indexOf(cur) === -1) { nv = ''; }
+    if (nv !== cur) { setChips(box, nv); }
+    box.querySelectorAll('button').forEach(function (b) {
+      var val = b.getAttribute('data-val');
+      b.hidden = !!r && r.avail.indexOf(val) === -1;
+      b.disabled = !!r && (r.op || (!!r.fix && val !== r.fix));
+    });
+    // Підказка під апаратом: правило з ділянки (лише один апарат) або адреса обраного; правило з обхвату — окремою нотаткою.
+    var zoneOnly = r && r.avail.length === 1;
+    hint.textContent = zoneOnly ? 'Це обстеження робимо тільки на апараті ' + r.avail[0] + ', ' + ADRESA[r.avail[0]] + '.'
+      : (nv ? 'Апарат ' + nv + ': ' + ADRESA[nv] + '.' : 'Не впевнені — пропустіть, апарат підбере оператор.');
+    var fromGirth = r && (r.op || (r.fix && !zoneOnly));
+    note.hidden = !fromGirth;
+    note.textContent = fromGirth ? r.say : '';
+    if (fromGirth) { hint.textContent = r.op ? '' : 'Апарат ' + r.fix + ': ' + ADRESA[r.fix] + '.'; }
+    if (c.mri) { v.apparatus = nv; }
+  }
+  // Вік (rules.json vik_min 18, vik_operator 17; фрази Олі dity_molodshi, dity_simnadtsiat).
+  function applyAge(form, v) {
+    var n = form.querySelector('[data-age-note]');
+    if (!n) { return; }
+    var a = /^\d{1,3}$/.test(v.age || '') && ((v.age || '').length >= 2 || ageCommitted) ? +v.age : null;
+    n.hidden = a === null || a > 17;
+    n.textContent = a === null ? '' : a < 17 ? 'Центр проводить обстеження з вісімнадцяти років.' : a === 17 ? 'Для сімнадцяти років можливість обстеження уточнить оператор.' : '';
+    n.className = a !== null && a < 17 ? 'agestop' : 'apnote';
   }
   function setChips(c, value) {
     if (!c) { return; }
     c.setAttribute('data-value', value || '');
     c.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-val') === value); });
     if (c.getAttribute('data-chips') === 'zone_group') { renderZoneSub(c.closest('form'), value); }
+    if (c.getAttribute('data-chips') === 'modality') { renderZoneGroups(c.closest('form'), value); }
     var fldEl = c.closest('.fld'); if (fldEl && value) { clearErr(fldEl); }
+  }
+  // Групи ділянок для обраної модальності (07.10): КТ і МРТ мають різні переліки з прайсу Олі. Обрана раніше група й ділянка
+  // лишаються, якщо вони є і в новій модальності; інакше вибір знімається.
+  function renderZoneGroups(form, mod) {
+    var box = form.querySelector('[data-zone-box]');
+    if (!box || box.getAttribute('data-for') === (mod || '')) { return; }
+    var prevG = (form.querySelector('.chips[data-chips="zone_group"]') || { getAttribute: function () { return ''; } }).getAttribute('data-value') || '';
+    var prevI = (form.querySelector('.chips[data-chips="zone_item"]') || { getAttribute: function () { return ''; } }).getAttribute('data-value') || '';
+    box.setAttribute('data-for', mod || '');
+    var groups = zoneGroups(mod);
+    box.innerHTML = groups.length ? chips('zone_group', groups.map(function (g) { return g[0]; })) : '';
+    var keep = groups.filter(function (g) { return g[0] === prevG; })[0];
+    if (keep) {
+      setChips(box.querySelector('.chips'), prevG);
+      if (keep[1].some(function (it) { return it[0] === prevI; })) { setChips(form.querySelector('.chips[data-chips="zone_item"]'), prevI); }
+    } else {
+      renderZoneSub(form, '');
+    }
   }
   function renderZoneSub(form, group) {
     var box = form.querySelector('[data-zone-sub]');
-    var g = ZONE_GROUPS.filter(function (x) { return x[0] === group; })[0];
-    var items = g ? g[1] : [];
+    var mod = (form.querySelector('.chips[data-chips="modality"]') || { getAttribute: function () { return ''; } }).getAttribute('data-value') || '';
+    var g = zoneGroups(mod).filter(function (x) { return x[0] === group; })[0];
+    var items = g ? g[1].map(function (it) { return it[0]; }) : [];
     box.innerHTML = items.length ? '<div class="sl">Оберіть ділянку в групі <b>' + esc(group) + '</b></div>' + chips('zone_item', items) : '';
     box.hidden = !items.length;
   }
   function fillDraft(form, d) {
+    if (d.modality) { setChips(form.querySelector('.chips[data-chips="modality"]'), d.modality); }
     if (d.zone_group) { setChips(form.querySelector('.chips[data-chips="zone_group"]'), d.zone_group); }
     Object.keys(d).forEach(function (k) {
       var c = form.querySelector('.chips[data-chips="' + k + '"]');
-      if (c) { if (k !== 'zone_group') { setChips(c, d[k]); } return; }
+      if (c) { if (k !== 'zone_group' && k !== 'modality') { setChips(c, d[k]); } return; }
       var i = form.querySelector('[name="' + k + '"]');
       if (!i) { return; }
       if (i.type === 'checkbox') { i.checked = !!d[k]; } else { i.value = d[k] == null ? '' : d[k]; }
@@ -659,9 +754,9 @@
     if (!v.modality) { e.modality = 'Оберіть КТ або МРТ'; }
     if (!zoneText(v)) { e.zone = v.zone_group ? 'Оберіть ділянку' : 'Оберіть групу, потім ділянку'; }
     if (!v.contrast) { e.contrast = 'Оберіть, з контрастом чи без'; }
-    if (!v.age) { e.age = 'Вкажіть вік'; } else if (+v.age < 0 || +v.age > 120) { e.age = 'Перевірте вік'; }
+    if (!v.age) { e.age = 'Вкажіть вік'; } else if (+v.age > 120) { e.age = 'Перевірте вік'; } else if (+v.age < 17) { e.age = 'Центр проводить обстеження з вісімнадцяти років.'; }
     if (!v.weight) { e.weight = 'Оберіть вагу'; }
-    if (c.mri && !v.girth) { e.girth = 'Оберіть обхват'; }
+    if (c.girth_q && !v.girth) { e.girth = 'Оберіть обхват'; }
     if (c.mri && c.knee && !v.knee) { e.knee = 'Оберіть обхват коліна'; }
     if (c.contrast && !v.gfr) { e.gfr = 'Оберіть варіант'; }
     if (c.referral && !v.referral) { e.referral = 'Є скерування чи немає?'; }
@@ -672,7 +767,6 @@
     if (!v.last_name) { e.last_name = 'Вкажіть прізвище'; }
     if (!/^\+380 \d{2} \d{3} \d{2} \d{2}$/.test(v.phone)) { e.phone = 'Введіть повний номер'; }
     if (!v.consent) { e.consent = 'Без згоди заявку надіслати не можна'; }
-    if (v.age && +v.age < 18 && c.contrast) { e.contrast = 'Дітям до 18 років обстеження з контрастною речовиною, і КТ, і МРТ, ми не проводимо. Оберіть «Без контрасту», а потребу в контрасті вирішить лікар'; }
     return e;
   }
 
@@ -708,7 +802,7 @@
 
     form.addEventListener('click', function (e) {
       var b = e.target.closest('.chips button');
-      if (!b) { return; }
+      if (!b || b.disabled) { return; }
       var c = b.parentNode;
       var cur = c.getAttribute('data-value');
       var val = b.getAttribute('data-val');
@@ -746,12 +840,13 @@
       formPreferred = ddmm(v.preferred_date) + ', ' + partOfDay(v).toLowerCase();
       var payload = {
         session_id: 'fm-' + uid().slice(3), site: SITE, page: location.href,
-        modality: v.modality, zone: zoneText(v), apparatus: v.apparatus, contrast: v.contrast.toLowerCase(),
+        modality: v.modality, zone: zoneText(v), apparatus: apSent(form, v), contrast: v.contrast.toLowerCase(), exam_code: examCode(form, v),
+        apparatus_op: apOp(form, v), exam_codes: examCodes(v),
         for_other: v.for_other, age: v.age, weight_band: v.weight, girth_band: v.girth, knee_band: v.knee,
         implants: v.implants, implants_docs: v.implants_docs, pacemaker: v.pacemaker, lens: v.lens, lens_recent: v.lens_recent,
         defibrillator: v.defibrillator, neurostimulator: v.neurostimulator, stents: v.stents, joint_prosthesis: v.joint_prosthesis, metal_fragments: v.metal_fragments,
         cannot_lie: v.cannot_lie, claustro: v.claustro, biopsy: v.biopsy, biopsy_recent: v.biopsy_recent, primovist: v.primovist,
-        gfr_status: v.gfr, gfr_old: v.gfr_old, anemia: v.anemia, lactation: v.lactation, pregnancy: v.pregnancy,
+        gfr_status: v.gfr, anemia: v.anemia, lactation: v.lactation, pregnancy: v.pregnancy,
         referral: v.referral.toLowerCase(),
         preferred_date: ddmm(v.preferred_date), preferred_part: partOfDay(v), preferred_time: formPreferred,
         name: v.first_name + ' ' + v.last_name, first_name: v.first_name, last_name: v.last_name,
@@ -776,6 +871,17 @@
     });
   }
 
+  // Апарат, з яким іде заявка, і код позиції прайсу Олі (КТ — код ділянки; МРТ — код на обраному апараті, без апарата — порожньо).
+  function apSent(form, v) { var r = aparatRule(v, conds(v)); return r && r.op ? '' : (v.apparatus || ''); }
+  function apOp(form, v) { var r = aparatRule(v, conds(v)); return !!(r && r.op); }
+  function examCode(form, v) {
+    var zi = zoneInfo(v);
+    if (!zi) { return ''; }
+    if (v.modality === 'КТ') { return zi[1] || ''; }
+    var ap = apSent(form, v);
+    return ap === '1,5 Тесла' ? (zi[1] || '') : ap === '3 Тесла' ? (zi[2] || '') : '';
+  }
+  function examCodes(v) { var zi = zoneInfo(v); return zi ? zi.slice(1).filter(Boolean).join(',') : ''; }
   function renderDone() {
     var d = formDone;
     var h = '<div class="done"><div class="ok"><b>Дякуємо' + (d.name ? ', ' + esc(d.name) : '') + '. Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
