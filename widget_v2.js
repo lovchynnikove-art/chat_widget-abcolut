@@ -110,7 +110,7 @@
     + '.send{width:42px;height:42px;border-radius:50%;border:0;background:' + COLOR + ';color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}'
     + '.send:disabled{opacity:.5;cursor:default}'
     + '.send svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
-    + '.consent{font-size:10.5px;color:#a3acb8;margin-top:7px;line-height:1.3;text-align:center}'
+    + '.consent{font-size:9.5px;color:#a3acb8;margin-top:7px;line-height:1.3;text-align:center;white-space:nowrap;overflow:hidden;letter-spacing:-.01em}'
     + '.restart{align-self:center;margin-top:4px;border:0;background:transparent;color:' + COLOR + ';text-decoration:underline;cursor:pointer;font:inherit;font-size:14px}'
     /* форма */
     + '.f{display:flex;flex-direction:column;gap:12px;font-size:14px}'
@@ -147,8 +147,13 @@
     + '.tg:hover{border-color:' + COLOR + '}'
     + '.tg.on{background:' + COLOR + ';border-color:' + COLOR + ';color:#fff}'
     + '.tg.on:before{content:"\\2713";color:#fff}'
-    + '.tgblock{background:#fff;border:1px solid #e6e9ee;border-radius:14px;padding:12px}'
     + '.tgblock .hint{margin:-2px 0 10px}'
+    + '.grp{background:#fff;border:1px solid #e6e9ee;border-radius:14px;margin-top:10px;overflow:hidden}'
+    + '.grp .gt{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#7a8594;padding:10px 12px 4px}'
+    + '.grp .swr{border:0;border-radius:0;border-top:1px solid #eef1f5;padding:9px 12px;font-size:14px}'
+    + '.grp .gt+.swr{border-top:0}'
+    + '.grp .swr.dep{padding-left:26px;background:#f8fafc;font-size:13.5px}'
+    + '.timesel{max-width:190px}'
     + '.next{margin-top:12px;border:1.5px solid ' + COLOR + ';background:#fff;color:' + COLOR + ';border-radius:12px;padding:9px 18px;font:inherit;font-weight:600;font-size:14px;cursor:pointer}'
     + '.next:hover{background:' + COLOR + ';color:#fff}'
     + '.f [data-step]{animation:am-in .25s ease}'
@@ -426,12 +431,17 @@
       + (label ? '<div class="l">' + label + (opt ? ' <span class="opt">необов\'язково</span>' : '') + '</div>' : '')
       + inner + '<div class="fe" hidden></div></div>';
   }
+  // Група пов'язаних тумблерів (07.10): картка з заголовком; видно, якщо підходить хоч одна умова зі списку any.
+  // all — умова, що має виконатись повністю (напр. «mri prostate»: лише МРТ простати), замість any.
+  function grp(title, any, rows, all) {
+    return '<div class="grp"' + (all ? ' data-if="' + all + '"' : ' data-if-any="' + any + '"') + '><div class="gt">' + title + '</div>' + rows + '</div>';
+  }
   // Компактна мітка замість рядка з перемикачем (07.10): усі разом, займають мало місця.
   function tg(name, label, ifs) {
     return '<label class="tg"' + (ifs ? ' data-if="' + ifs + '"' : '') + '><input type="checkbox" name="' + name + '"><span>' + label + '</span></label>';
   }
-  function swRow(name, label, ifs) {
-    return '<label class="swr"' + (ifs ? ' data-if="' + ifs + '"' : '') + '><span>' + label + '</span><span class="switch"><input type="checkbox" name="' + name + '"><i></i></span></label>';
+  function swRow(name, label, ifs, dep) {
+    return '<label class="swr' + (dep ? ' dep' : '') + '"' + (ifs ? ' data-if="' + ifs + '"' : '') + '><span>' + label + '</span><span class="switch"><input type="checkbox" name="' + name + '"><i></i></span></label>';
   }
 
   // 07.10 (вказівка користувача): форма покрокова — спершу лише «Яке обстеження», далі кожне поле з'являється після
@@ -446,43 +456,37 @@
       + fld('contrast', 'Контраст', chips('contrast', ['З контрастом', 'Без контрасту'], 'seg'), '', false, 3)
       + '<h4 data-step="4">Пацієнт</h4>'
       + fld('age', 'Повних років', '<div class="agew"><input type="text" name="age" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="35" autocomplete="off"><span>років</span></div>'
-        + '<div class="tgs" style="margin-top:10px">' + tg('for_other', 'Записую іншу людину') + '</div>', '', false, 4)
+        + '<div style="margin-top:10px">' + swRow('for_other', 'Записую іншу людину') + '</div>', '', false, 4)
       + fld('weight', 'Вага', chips('weight', ['До 100 кг', '100-120 кг', 'Понад 120 кг'], 'seg'), '', false, 5)
       + fld('girth', 'Обхват тіла в найгрубшому місці при опущених руках', chips('girth', ['До 140 см', '140-160 см', 'Понад 160 см'], 'seg'), 'mri', false, 6)
       + fld('knee', 'Обхват у ділянці коліна', chips('knee', ['До 45 см', '45-59 см', 'Понад 59 см'], 'seg'), 'mri knee', false, 7)
       + '<div class="fld tgblock" data-fld="toggles" data-step="8">'
       + '<div class="l">Відмітьте, що стосується пацієнта</div>'
       + '<div class="hint">Якщо нічого з цього, просто натисніть «Далі»</div>'
-      + '<div class="tgs">'
-      + tg('pacemaker', 'Кардіостимулятор', 'mri')
-      + tg('defibrillator', 'Дефібрилятор', 'mri')
-      + tg('neurostimulator', 'Нейростимулятор', 'mri')
-      + tg('stents', 'Стенти', 'mri')
-      + tg('joint_prosthesis', 'Суглобові протези', 'mri')
-      + tg('metal_fragments', 'Металеві осколки', 'mri')
-      + tg('implants', 'Інші металеві імпланти, пластини', 'mri')
-      + tg('implants_docs', 'Є паспорт чи довідка на імпланти', 'mri implants')
-      + tg('lens', 'Імплантований кришталик ока', 'mri')
-      + tg('lens_recent', 'Операція на оці менше 3 місяців тому', 'mri lens')
-      + tg('cannot_lie', 'Важко лежати нерухомо 20-40 хв', 'mri')
-      + tg('claustro', 'Страх закритого простору', 'mri')
-      + tg('biopsy', 'Була біопсія простати', 'mri prostate')
-      + tg('biopsy_recent', 'Біопсія менше 7 тижнів тому', 'mri prostate biopsy')
-      + tg('primovist', 'Лікар призначив Примовіст', 'mri liver')
-      + tg('anemia', 'Анемія, гемоглобін нижче 80', 'ct contrast')
-      + tg('lactation', 'Годую груддю', 'contrast')
-      + tg('pregnancy', 'Вагітність', 'ct')
-      + '</div>'
+      + grp('Пристрої в тілі', 'mri',
+          swRow('pacemaker', 'Кардіостимулятор', 'mri') + swRow('defibrillator', 'Дефібрилятор', 'mri') + swRow('neurostimulator', 'Нейростимулятор', 'mri'))
+      + grp('Метал в тілі', 'mri',
+          swRow('stents', 'Стенти', 'mri') + swRow('joint_prosthesis', 'Суглобові протези', 'mri') + swRow('metal_fragments', 'Металеві осколки', 'mri')
+          + swRow('implants', 'Інші металеві імпланти або пластини', 'mri') + swRow('implants_docs', 'На імпланти є паспорт або довідка лікаря', 'mri implants', true))
+      + grp('Очі', 'mri',
+          swRow('lens', 'Імплантований кришталик ока', 'mri') + swRow('lens_recent', 'Операція на оці менше 3 місяців тому', 'mri lens', true))
+      + grp('Під час обстеження', 'mri',
+          swRow('cannot_lie', 'Важко лежати нерухомо 20-40 хвилин', 'mri') + swRow('claustro', 'Страх закритого простору', 'mri'))
+      + grp('Простата', '',
+          swRow('biopsy', 'Була біопсія простати', 'mri prostate') + swRow('biopsy_recent', 'Біопсія менше 7 тижнів тому', 'mri prostate biopsy', true), 'mri prostate')
+      + grp('Печінка', '', swRow('primovist', 'Лікар призначив контраст Примовіст', 'mri liver'), 'mri liver')
+      + grp('Стан пацієнта', 'contrast ct',
+          swRow('anemia', 'Анемія, гемоглобін нижче 80', 'ct contrast') + swRow('lactation', 'Годую груддю', 'contrast') + swRow('pregnancy', 'Вагітність', 'ct'))
       + '<input type="hidden" name="tg_done">'
       + '<button type="button" class="next" data-next="tg">Далі</button>'
       + '</div>'
       + fld('gfr', 'Аналіз на креатинін і ШКФ', chips('gfr', ['Немає', 'Є, ШКФ у нормі', 'Є, ШКФ низька'], 'seg') + '<div class="hint" data-gfr-hint></div>'
-        + '<div class="tgs" style="margin-top:10px">' + tg('gfr_old', 'Аналізу більше 14 днів', 'contrast gfr_has') + '</div>', 'contrast', false, 9)
+        + '<div style="margin-top:10px">' + swRow('gfr_old', 'Аналізу більше 14 днів', 'contrast gfr_has') + '</div>', 'contrast', false, 9)
       + fld('referral', 'Скерування від лікаря', chips('referral', ['Є', 'Немає'], 'seg'), 'referral', false, 10)
       + '<h4 data-step="11">Коли зручно</h4>'
       + fld('preferred_date', 'Бажаний день', '<input type="date" name="preferred_date" min="' + dayISO(0) + '" max="' + dayISO(60) + '">', '', false, 11)
       + fld('preferred_part', 'Бажана частина дня', chips('day_part', DAY_PARTS)
-        + '<div class="exact"><input type="time" name="exact_time"><span>точна година, необов\'язково</span></div>'
+        + '<div class="exact"><select name="exact_time" class="timesel">' + TIME_OPTS + '</select><span>точна година, необов\'язково</span></div>'
         + '<div class="hint">Точний час підтвердить оператор.</div>', '', false, 12)
       + '<h4 data-step="13">Контакт</h4>'
       + '<div class="two" data-step="13">'
@@ -518,6 +522,12 @@
   }
   // Бажаний час замість вибору слота (29.09): чіткого запису немає, можливість дня і години перевіряє двигун 2.0 на сервері.
   var DAY_PARTS = ['Зранку', 'В обід', 'Після обіду', 'Ввечері', 'Будь-коли'];
+  // Точна година (07.10): гарний список з кроком 30 хвилин у робочі години апаратів, а не системний годинник.
+  var TIME_OPTS = (function () {
+    var o = '<option value="">Не важливо</option>';
+    for (var h = 8; h <= 21; h++) { ['00', '30'].forEach(function (m) { if (h === 21 && m === '30') { return; } var t = (h < 10 ? '0' : '') + h + ':' + m; o += '<option value="' + t + '">' + t + '</option>'; }); }
+    return o;
+  })();
   // Межі поля дати: сьогодні і сьогодні плюс 60 днів, у форматі, який розуміє input type=date.
   function dayISO(plus) {
     var d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + (plus || 0));
@@ -557,6 +567,9 @@
   function applyVisibility(form) {
     var v = vals(form), c = conds(v);
     var reached = stepReached(v, c);
+    form.querySelectorAll('[data-if-any]').forEach(function (el) {
+      el.hidden = !el.getAttribute('data-if-any').split(/\s+/).some(function (k) { return c[k]; });
+    });
     form.querySelectorAll('[data-if],[data-step]').forEach(function (el) {
       var ifs = el.getAttribute('data-if');
       var keys = ifs ? ifs.split(/\s+/) : [];
