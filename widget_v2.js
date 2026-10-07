@@ -675,7 +675,7 @@
     var fromGirth = r && (r.op || (r.fix && !zoneOnly));
     note.hidden = !fromGirth;
     note.textContent = fromGirth ? r.say : '';
-    if (fromGirth) { hint.textContent = r.op ? '' : 'Апарат ' + r.fix + ': ' + ADRESA[r.fix] + '.'; }
+    if (fromGirth) { hint.textContent = ''; }   // адреса вже є у фразі про апарат
     if (c.mri) { v.apparatus = nv; }
   }
   // Вік (rules.json vik_min 18, vik_operator 17; фрази Олі dity_molodshi, dity_simnadtsiat).
