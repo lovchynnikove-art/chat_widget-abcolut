@@ -1,0 +1,759 @@
+/* АбсолютМед, віджет реєстратури: чат з Олею + форма швидкого запису. Ставиться одним тегом:
+   <script src="widget.js" data-color="#0077b3" data-site="absolutmed.lviv.ua"></script>
+   Необов'язкові атрибути: data-endpoint (чат), data-form-endpoint (форма), data-title.
+   Даних у скрипті немає: промпт, довідник, пороги і ціни живуть в n8n. */
+(function () {
+  'use strict';
+  if (window.__absolutmedChatLoaded) { return; }
+  window.__absolutmedChatLoaded = true;
+
+  var script = document.currentScript;
+  var ds = (script && script.dataset) || {};
+  var ENDPOINT = ds.endpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-chat';
+  var FORM_ENDPOINT = ds.formEndpoint || 'https://n8n.businessautomation.space/webhook/absolutmed-form';
+  var COLOR = ds.color || '#0077b3';
+  var SITE = ds.site || location.hostname;
+  var TITLE = ds.title || 'Онлайн-чат АбсолютМед';
+  var BRAND = ds.brand || 'АбсолютМед';
+  var STORE_KEY = 'absolutmed_chat_v1';
+  var FORM_KEY = 'absolutmed_form_v1';
+  var TTL_MS = 6 * 3600 * 1000;
+
+  var GREETING = 'Доброго дня! Медичний центр Абсолют, мене звати Оля, я віртуальний асистент реєстратури. Листування зберігається і передається реєстратурі. Скажіть, будь ласка, чим можу допомогти?';
+  // Найчастіші запити з аналізу вхідних дзвінків 25-29.09, з тих, що чат закриває сам.
+  var START_BUTTONS = ['Записатися на обстеження', 'Скільки коштує', 'Чи потрібне скерування', 'Які аналізи потрібні', 'Як до вас доїхати'];
+  var FORM_BUTTON = 'Заповнити форму запису';
+  var CONSENT = 'Надсилаючи повідомлення, ви погоджуєтесь з обробкою персональних даних.';
+
+  var state = load();
+
+  function load() {
+    try {
+      var raw = sessionStorage.getItem(STORE_KEY);
+      if (raw) {
+        var s = JSON.parse(raw);
+        if (s && s.session_id && (Date.now() - (s.updated || 0)) < TTL_MS) { if (!s.mode) { s.mode = 'chat'; } return s; }
+      }
+    } catch (e) {}
+    return fresh();
+  }
+  function fresh() {
+    return { session_id: uid(), messages: [], status: 'in_progress', closed: '', buttons: START_BUTTONS.slice(), open: false, mode: 'chat', booking: null, escalated: false, chas: {}, taken: false, handoff: false, updated: Date.now() };
+  }
+  function save() {
+    state.updated = Date.now();
+    try { sessionStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  function uid() {
+    var s = '';
+    for (var i = 0; i < 24; i++) { s += Math.floor(Math.random() * 36).toString(36); }
+    return 'ch-' + Date.now().toString(36) + '-' + s;
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /* ---------- розмітка ---------- */
+  var host = document.createElement('div');
+  host.id = 'absolutmed-chat';
+  var root = host.attachShadow({ mode: 'open' });
+
+  var css = ''
+    + ':host{all:initial}'
+    + '*{box-sizing:border-box;margin:0;padding:0}'
+    + '.am{position:fixed;right:20px;bottom:20px;z-index:2147483000;font:15px/1.45 -apple-system,"Segoe UI",Roboto,"Noto Sans",Arial,sans-serif;color:#1c2430}'
+    + '.launch{display:flex;flex-direction:column;align-items:flex-end;gap:10px}'
+    + '.am-btn{width:60px;height:60px;border-radius:50%;border:0;background:' + COLOR + ';color:#fff;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.22);display:flex;align-items:center;justify-content:center;transition:transform .15s}'
+    + '.am-btn:hover{transform:scale(1.06)}'
+    + '.am-btn svg{width:30px;height:30px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
+    + '.am-pill{border:0;border-radius:30px;background:#fff;color:' + COLOR + ';font:inherit;font-weight:600;font-size:14px;padding:10px 16px 10px 12px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.18);display:flex;align-items:center;gap:8px;border:1.5px solid ' + COLOR + '}'
+    + '.am-pill:hover{background:' + COLOR + ';color:#fff}'
+    + '.am-pill svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
+    + '.am-panel{position:absolute;right:0;bottom:0;width:380px;max-width:calc(100vw - 40px);height:620px;max-height:calc(100vh - 40px);background:#fff;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:none;flex-direction:column;overflow:hidden}'
+    + '.am.open .am-panel{display:flex}'
+    + '.am.fm .am-panel{width:560px;height:860px}'
+    + '.am.open .launch{display:none}'
+    + '.am-head{background:' + COLOR + ';color:#fff;padding:12px 12px 12px 14px;display:flex;align-items:center;gap:10px}'
+    + '.am-head .av{position:relative;flex:none;width:38px;height:38px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center}'
+    + '.am-head .av svg{width:20px;height:20px;fill:none;stroke:' + COLOR + ';stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
+    + '.am-head .av i{position:absolute;right:0;bottom:0;width:10px;height:10px;border-radius:50%;background:#34c759;border:2px solid ' + COLOR + '}'
+    + '.am-head .tt{min-width:0;display:flex;flex-direction:column;line-height:1.2}'
+    + '.am-head .t{font-weight:700;font-size:16px;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '.am-head .s{font-size:12px;opacity:.82;margin-top:2px;white-space:nowrap}'
+    + '.am-head .sw{margin-left:auto;background:rgba(255,255,255,.18);border:0;color:#fff;font:inherit;font-size:12px;padding:6px 10px;border-radius:14px;cursor:pointer;white-space:nowrap}'
+    + '.am-head .sw:hover{background:rgba(255,255,255,.3)}'
+    + '.am-head .x{background:transparent;border:0;color:#fff;font-size:22px;line-height:1;cursor:pointer;padding:2px 4px}'
+    + '.am-head .rs{background:transparent;border:0;cursor:pointer;width:30px;height:30px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center}'
+    + '.am-head .rs:hover{background:rgba(255,255,255,.18)}'
+    + '.am-head .rs svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
+    + '.am-body{flex:1;overflow-y:auto;padding:14px 12px;background:#f3f5f8;display:flex;flex-direction:column;gap:8px}'
+    + '.m{max-width:85%;padding:10px 13px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word}'
+    + '.m.a{align-self:flex-start;background:#fff;border-bottom-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
+    + '.m.u{align-self:flex-end;background:' + COLOR + ';color:#fff;border-bottom-right-radius:4px}'
+    + '.m.err{align-self:center;background:#fff3f3;color:#9b1c1c;font-size:13px;text-align:center}'
+    + '.m.a.op{background:#eef6ff;border:1px solid #cfe3f7}'
+    + '.m .who{display:block;font-size:11px;font-weight:600;color:#1f5f99;margin-bottom:2px}'
+    + '.opbar{align-self:center;font-size:12px;color:#1f5f99;background:#eef6ff;border-radius:10px;padding:4px 10px}'
+    + '.btns{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;max-width:90%}'
+    + '.btns button{border:1.5px solid ' + COLOR + ';color:' + COLOR + ';background:#fff;border-radius:18px;padding:7px 13px;font:inherit;font-size:14px;cursor:pointer}'
+    + '.btns button:hover{background:' + COLOR + ';color:#fff}'
+    + '.btns button.alt{border-style:dashed}'
+    + '.typing{align-self:flex-start;background:#fff;border-radius:14px;padding:12px 14px;display:flex;gap:4px}'
+    + '.typing i{width:7px;height:7px;border-radius:50%;background:#9aa4b1;animation:am-b 1.2s infinite}'
+    + '.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}'
+    + '@keyframes am-b{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}'
+    + '.am-foot{border-top:1px solid #e6e9ee;background:#fff;padding:8px 10px 6px}'
+    + '.row{display:flex;gap:8px;align-items:flex-end}'
+    + 'textarea{flex:1;resize:none;border:1px solid #d5dae2;border-radius:12px;padding:9px 12px;font:inherit;max-height:110px;outline:none}'
+    + 'textarea:focus{border-color:' + COLOR + '}'
+    + 'textarea:disabled{background:#f3f5f8}'
+    + '.send{width:42px;height:42px;border-radius:50%;border:0;background:' + COLOR + ';color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}'
+    + '.send:disabled{opacity:.5;cursor:default}'
+    + '.send svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
+    + '.consent{font-size:10.5px;color:#a3acb8;margin-top:7px;line-height:1.3;text-align:center}'
+    + '.restart{align-self:center;margin-top:4px;border:0;background:transparent;color:' + COLOR + ';text-decoration:underline;cursor:pointer;font:inherit;font-size:14px}'
+    /* форма */
+    + '.f{display:flex;flex-direction:column;gap:12px;font-size:14px}'
+    + '.f .note103{background:#fff8e6;border:1px solid #f3dfae;color:#6b4e00;border-radius:10px;padding:8px 10px;font-size:12.5px}'
+    + '.f h4,.done h4{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#7a8594;margin-top:8px}'
+    + '.fld .l{font-size:13.5px;font-weight:600;color:#2b3440;margin-bottom:6px}'
+    + '.fld .opt{font-weight:400;color:#9aa4b1;font-size:12px}'
+    + '.f input[type=text],.f input[type=tel],.f input[type=date],.f input[type=time],.f select{width:100%;border:1.5px solid #d5dae2;border-radius:12px;padding:11px 13px;font:inherit;font-size:15px;background:#fff;outline:none;color:#1c2430;-webkit-appearance:none;appearance:none}'
+    + '.two{display:flex;gap:10px}.two .fld{flex:1;min-width:0}'
+    + '.agew{display:flex;align-items:center;gap:10px}.agew input{width:96px!important;text-align:center;font-size:17px!important}.agew span{color:#5b6675;font-size:14px}'
+    + '.f select{background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%237a8594%27 stroke-width=%272%27%3E%3Cpath d=%27M6 9l6 6 6-6%27/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px}'
+    + '.f input:focus,.f select:focus{border-color:' + COLOR + ';box-shadow:0 0 0 3px rgba(0,0,0,.05)}'
+    + '.f input::placeholder{color:#a9b2bd}'
+    + '.chips{display:flex;flex-wrap:wrap;gap:8px}'
+    + '.chips button{border:1.5px solid #d5dae2;background:#fff;border-radius:22px;padding:9px 14px;font:inherit;font-size:14px;cursor:pointer;color:#1c2430;line-height:1.2}'
+    + '.chips button:hover{border-color:' + COLOR + '}'
+    + '.chips button.on{border-color:' + COLOR + ';background:' + COLOR + ';color:#fff}'
+    + '.chips.seg button{flex:1;min-width:0;border-radius:12px;text-align:center}'
+    + '.sub2{margin-top:10px;padding:10px 12px 12px;background:#eef3f8;border-left:3px solid ' + COLOR + ';border-radius:0 12px 12px 0}'
+    + '.sub2 .sl{font-size:12px;color:#5b6675;margin:0 0 8px}.sub2 .sl b{color:#1c2430;font-weight:600}'
+    + '.sub2 .chips{gap:6px}.sub2 .chips button{font-size:13px;padding:7px 12px;border-radius:16px;background:#fff;border-color:#c9d3df}'
+    + '.sub2 .chips button.on{background:' + COLOR + ';border-color:' + COLOR + '}'
+    + '.swr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:#fff;border:1px solid #e6e9ee;border-radius:12px;cursor:pointer;line-height:1.3}'
+    + '.switch{position:relative;flex:none;width:44px;height:26px}'
+    + '.switch input{opacity:0;width:0;height:0;position:absolute}'
+    + '.switch i{position:absolute;inset:0;background:#cfd5dd;border-radius:26px;transition:background .15s}'
+    + '.switch i:before{content:"";position:absolute;width:22px;height:22px;left:2px;top:2px;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}'
+    + '.switch input:checked+i{background:' + COLOR + '}'
+    + '.switch input:checked+i:before{transform:translateX(18px)}'
+    + '.tgs{display:flex;flex-wrap:wrap;gap:6px}'
+    + '.tg{position:relative;display:inline-flex;align-items:center;gap:6px;border:1.5px solid #d5dae2;border-radius:18px;padding:7px 12px;font-size:13px;line-height:1.2;cursor:pointer;background:#fff;color:#1c2430;user-select:none}'
+    + '.tg input{position:absolute;opacity:0;width:0;height:0}'
+    + '.tg:before{content:"+";font-weight:700;color:#9aa4b1}'
+    + '.tg:hover{border-color:' + COLOR + '}'
+    + '.tg.on{background:' + COLOR + ';border-color:' + COLOR + ';color:#fff}'
+    + '.tg.on:before{content:"\\2713";color:#fff}'
+    + '.tgblock{background:#fff;border:1px solid #e6e9ee;border-radius:14px;padding:12px}'
+    + '.tgblock .hint{margin:-2px 0 10px}'
+    + '.next{margin-top:12px;border:1.5px solid ' + COLOR + ';background:#fff;color:' + COLOR + ';border-radius:12px;padding:9px 18px;font:inherit;font-weight:600;font-size:14px;cursor:pointer}'
+    + '.next:hover{background:' + COLOR + ';color:#fff}'
+    + '.f [data-step]{animation:am-in .25s ease}'
+    + '@keyframes am-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}'
+    + '.chk{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1px solid #e6e9ee;border-radius:12px;cursor:pointer;line-height:1.35}'
+    + '.chk input{margin-top:2px;flex:none;width:18px;height:18px;accent-color:' + COLOR + '}'
+    + '.f .hint{font-size:12px;color:#7a8594;margin-top:6px}'
+    + '.exact{display:flex;align-items:center;gap:10px;margin-top:8px}.exact input{width:130px!important}.exact span{color:#5b6675;font-size:13px}'
+    + '.done .booked{background:#e8f5ee;border:1px solid #bfe3cf;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px}'
+    + '.fld .fe{margin-top:6px;font-size:12.5px;color:#c0392b}'
+    + '.fld.invalid .l{color:#c0392b}'
+    + '.fld.invalid input,.fld.invalid select{border-color:#e05a4e}'
+    + '.fld.invalid .chips button:not(.on){border-color:#f0b4ae}'
+    + '.fld.invalid .chk{border-color:#e05a4e}'
+    + '.f .submit{border:0;border-radius:12px;background:' + COLOR + ';color:#fff;font:inherit;font-weight:600;font-size:16px;padding:14px;cursor:pointer;margin-top:4px}'
+    + '.f .submit:disabled{opacity:.6;cursor:default}'
+    + '.done{display:flex;flex-direction:column;gap:10px;font-size:14px}'
+    + '.done .ok{background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
+    + '.done .ok b{display:block;font-size:16px;margin-bottom:6px;color:' + COLOR + '}'
+    + '.done p{background:#fff;border-radius:12px;padding:10px 13px;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
+    + '@media (max-width:640px){.am{right:0;bottom:0;-webkit-text-size-adjust:100%;text-size-adjust:100%}.launch{margin:0 16px 16px 0}'
+    + '.am .am-panel,.am.fm .am-panel{position:fixed;left:0;top:0;right:0;bottom:auto;width:100%;max-width:100%;height:100vh;height:100dvh;max-height:none;border-radius:0;box-shadow:none;overscroll-behavior:contain}'
+    + '.am-head{padding-top:max(14px,env(safe-area-inset-top))}'
+    /* iPhone: поле вводу зі шрифтом менше 16px Safari збільшує при фокусі, і чат «пливе» */
+    + 'textarea,.f input[type=text],.f input[type=tel],.f input[type=date],.f input[type=time],.f select{font-size:16px}'
+    + '.am-body{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}'
+    + '.am-foot{padding-bottom:max(6px,env(safe-area-inset-bottom))}'
+    + 'button{touch-action:manipulation}}'
+
+  var ICON_CHAT = '<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-6.5A8 8 0 1 1 21 12z"/></svg>';
+  var ICON_FORM = '<svg viewBox="0 0 24 24"><path d="M9 5h6M9 3h6v4H9zM5 6h1v15h12V6h1"/><path d="M8 12h8M8 16h5"/></svg>';
+  var ICON_RESET = '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 3v6h6"/></svg>';
+
+  root.innerHTML = '<style>' + css + '</style>'
+    + '<div class="am">'
+    + '<div class="launch">'
+    + '<button class="am-pill" data-mode="form" aria-label="Швидкий запис">' + ICON_FORM + 'Швидкий запис</button>'
+    + '<button class="am-btn" data-mode="chat" aria-label="Відкрити чат">' + ICON_CHAT + '</button>'
+    + '</div>'
+    + '<div class="am-panel" role="dialog" aria-label="' + esc(TITLE) + '">'
+    + '<div class="am-head"><div class="av">' + ICON_CHAT + '<i></i></div><div class="tt"><div class="t">' + esc(BRAND) + '</div><div class="s">Онлайн-чат</div></div>'
+    + '<button class="sw" type="button"></button><button class="rs" type="button" aria-label="Почати спочатку" title="Почати спочатку">' + ICON_RESET + '</button><button class="x" aria-label="Закрити">×</button></div>'
+    + '<div class="am-body"></div>'
+    + '<div class="am-foot"><div class="row"><textarea rows="1" placeholder="Надіслати повідомлення..." aria-label="Повідомлення"></textarea>'
+    + '<button class="send" aria-label="Надіслати"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></div>'
+    + '<div class="consent">' + esc(CONSENT) + '</div></div>'
+    + '</div></div>';
+
+  var wrap = root.querySelector('.am');
+  var body = root.querySelector('.am-body');
+  var foot = root.querySelector('.am-foot');
+  var head = root.querySelector('.am-head');
+  var sw = root.querySelector('.sw');
+  var ta = root.querySelector('textarea');
+  var sendBtn = root.querySelector('.send');
+  var busy = false;
+
+  root.querySelector('.am-btn').addEventListener('click', function () { setMode('chat'); setOpen(true); });
+  root.querySelector('.am-pill').addEventListener('click', function () { setMode('form'); setOpen(true); });
+  root.querySelector('.x').addEventListener('click', function () { setOpen(false); });
+  root.querySelector('.rs').addEventListener('click', function () { resetAll(); });
+  sw.addEventListener('click', function () { setMode(state.mode === 'chat' ? 'form' : 'chat'); render(); });
+  sendBtn.addEventListener('click', function () { send(ta.value); });
+  ta.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(ta.value); }
+  });
+  ta.addEventListener('input', function () { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'; });
+
+  // Телефон (ширина до 640px): чат на весь екран тримається рівно у видимій області (visualViewport). Коли на iPhone
+  // відкривається клавіатура або ховається панель браузера, шапка і поле вводу не «пливуть», а сайт під чатом не прокручується.
+  var panel = root.querySelector('.am-panel');
+  var vv = window.visualViewport || null;
+  var pageLocked = false, pageOverflow = ['', ''];
+  function isPhone() { return !!(window.matchMedia && window.matchMedia('(max-width:640px)').matches); }
+  function fitPhone() {
+    var on = wrap.classList.contains('open') && isPhone();
+    if (on && vv) { panel.style.height = Math.round(vv.height) + 'px'; panel.style.top = Math.round(vv.offsetTop) + 'px'; }
+    else { panel.style.height = ''; panel.style.top = ''; }
+    var de = document.documentElement, bd = document.body;
+    if (on && !pageLocked) {
+      pageOverflow = [de.style.overflow, bd ? bd.style.overflow : ''];
+      de.style.overflow = 'hidden'; if (bd) { bd.style.overflow = 'hidden'; }
+      pageLocked = true;
+    } else if (!on && pageLocked) {
+      de.style.overflow = pageOverflow[0]; if (bd) { bd.style.overflow = pageOverflow[1]; }
+      pageLocked = false;
+    }
+  }
+  if (vv) { vv.addEventListener('resize', fitPhone); vv.addEventListener('scroll', fitPhone); }
+  window.addEventListener('resize', fitPhone);
+  window.addEventListener('orientationchange', fitPhone);
+
+  function setMode(m) { state.mode = m; save(); }
+  function setOpen(v) {
+    state.open = v; save();
+    wrap.classList.toggle('open', v);
+    fitPhone();
+    if (v) { render(); if (state.mode === 'chat') { setTimeout(function () { ta.focus(); }, 50); } }
+  }
+
+  // Кнопка «Почати спочатку»: чат, форма і все збережене в sessionStorage.
+  // resetEpoch відсікає відповіді на запити, надіслані до скидання.
+  var resetEpoch = 0;
+  function hasProgress() {
+    if (state.messages.length || formDone) { return true; }
+    var d = loadDraft();
+    return Object.keys(d).some(function (k) { return d[k] !== '' && d[k] !== false && d[k] != null; });
+  }
+  function resetAll() {
+    if (hasProgress() && typeof window.confirm === 'function' && !window.confirm('Почати спочатку? Розмову і заповнену форму буде очищено.')) { return; }
+    var m = state.mode;
+    resetEpoch++;
+    state = fresh(); state.open = true; state.mode = m;
+    busy = false;
+    formDone = null; formBusy = false; formPreferred = '';
+    try { sessionStorage.removeItem(FORM_KEY); } catch (e) {}
+    ta.value = ''; ta.style.height = 'auto';
+    save(); render();
+    body.scrollTop = 0;
+    if (m === 'chat') { setTimeout(function () { ta.focus(); }, 50); }
+  }
+
+  /* ---------- рендер ---------- */
+  function render() {
+    var isChat = state.mode === 'chat';
+    wrap.classList.toggle('fm', !isChat);
+    head.querySelector('.t').textContent = isChat ? BRAND : 'Швидкий запис';
+    head.querySelector('.s').textContent = isChat ? 'Онлайн-чат' : 'Оператор передзвонить і підтвердить час';
+    head.querySelector('.av').innerHTML = (isChat ? ICON_CHAT : ICON_FORM) + '<i></i>';
+    sw.textContent = isChat ? 'Форма запису' : 'Чат з Олею';
+    foot.hidden = !isChat;
+    body.innerHTML = '';
+    if (isChat) { renderChat(); } else { renderForm(); }
+  }
+
+  function renderChat() {
+    add('a', GREETING);
+    state.messages.forEach(function (m) {
+      if (m.from === 'operator') { addOperator(m.content); } else { add(m.role === 'user' ? 'u' : 'a', m.content); }
+    });
+    // Діалог прийняв оператор реєстратури: розмова триває, навіть якщо Оля вже попрощалась.
+    // Оля передала розмову оператору, а він ще не взяв діалог: поле вводу теж відкрите, репліки пацієнта чекають оператора.
+    var opText = state.taken ? 'Вам відповідає оператор реєстратури' : (state.handoff ? 'Розмову передано оператору реєстратури' : '');
+    if (opText) { var bar = document.createElement('div'); bar.className = 'opbar'; bar.textContent = opText; body.appendChild(bar); }
+    // 25.09: Оля попрощалась, але розмова не закривається: пацієнт може питати далі, як у помічника. Поле вводу відкрите,
+    // «Розпочати нову розмову» лише пропонується.
+    var ended = state.status !== 'in_progress' && !state.taken && !state.handoff;
+    // Заявку на обстеження вже оформлено («done»): друге обстеження — у новій розмові, тож кнопку видно й тоді, коли пацієнт пише далі.
+    var offerNew = ended || (state.closed === 'done' && !state.taken && !state.handoff);
+    if (!busy) {
+      var box = document.createElement('div'); box.className = 'btns';
+      (state.buttons || []).forEach(function (b) {
+        var btn = document.createElement('button'); btn.type = 'button'; btn.textContent = b;
+        btn.addEventListener('click', function () { send(b); });
+        box.appendChild(btn);
+      });
+      if (!state.messages.length) {
+        var fb = document.createElement('button'); fb.type = 'button'; fb.className = 'alt'; fb.textContent = FORM_BUTTON;
+        fb.addEventListener('click', function () { setMode('form'); render(); });
+        box.appendChild(fb);
+      }
+      if (box.children.length) { body.appendChild(box); }
+    }
+    if (offerNew) {
+      var r = document.createElement('button'); r.className = 'restart'; r.type = 'button';
+      r.textContent = 'Розпочати нову розмову';
+      r.addEventListener('click', function () { var m = state.mode; state = fresh(); state.open = true; state.mode = m; save(); render(); });
+      body.appendChild(r);
+    }
+    ta.disabled = busy; sendBtn.disabled = busy;
+    ta.placeholder = 'Надіслати повідомлення...';
+    // Згоду дано першим повідомленням — далі рядок не заважає.
+    var cs = root.querySelector('.consent'); if (cs) { cs.hidden = state.messages.length > 0; }
+    scroll();
+  }
+  function add(cls, text) {
+    var d = document.createElement('div'); d.className = 'm ' + cls; d.textContent = text; body.appendChild(d); return d;
+  }
+  function addOperator(text) {
+    var d = document.createElement('div'); d.className = 'm a op';
+    var who = document.createElement('span'); who.className = 'who'; who.textContent = 'Оператор реєстратури';
+    d.appendChild(who); d.appendChild(document.createTextNode(text)); body.appendChild(d); return d;
+  }
+  function scroll() { body.scrollTop = body.scrollHeight; }
+
+  /* ---------- чат: відправка ---------- */
+  // Після відповіді курсор повертається в поле вводу: на комп'ютері завжди, на телефоні тільки якщо пацієнт друкував,
+  // щоб після натискання кнопки не вискакувала клавіатура.
+  function focusInput(wasFocused) {
+    if (ta.disabled || state.mode !== 'chat' || !state.open) { return; }
+    var finePointer = !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
+    if (wasFocused || finePointer) { ta.focus(); }
+  }
+  // Фрази, якими Оля передає розмову оператору в чаті (промпт чату, «Якщо пацієнт заперечує або нервує»); звіряє verify_prompts.py.
+  var HANDOFF_RE = /відповість вам тут,? у чаті/i;
+  // Оператор відпустив діалог: далі знову відповідає Оля, передача оператору знята.
+  function setTaken(v) { if (state.taken && !v) { state.handoff = false; } state.taken = v; }
+  function send(text) {
+    text = String(text || '').trim();
+    if (!text || busy) { return; }
+    if (text.length > 1000) { text = text.slice(0, 1000); }
+    state.messages.push({ role: 'user', content: text });
+    var prevButtons = state.buttons || [];
+    state.buttons = []; save();
+    ta.value = ''; ta.style.height = 'auto';
+    var keepFocus = root.activeElement === ta;
+    busy = true; render();
+    var typing = document.createElement('div'); typing.className = 'typing'; typing.innerHTML = '<i></i><i></i><i></i>';
+    body.appendChild(typing); scroll();
+
+    var ep = resetEpoch;
+    // closed: завершальний статус, з яким заявку вже передано (25.09): сервер не шле другу заявку, коли пацієнт просто пише далі.
+    // anketa: модальність, ділянка, контраст, вік, вага, стать, ім'я з попередньої відповіді (25.09): з них сервер рахує ескалацію й анкету.
+    // chas: бажаний час з попередньої відповіді (29.09), возиться так само, як anketa: чіткого запису немає, час перевіряє двигун 2.0.
+    var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60), escalated: !!state.escalated, chas: state.chas || {}, handoff: !!state.handoff, closed: state.closed || '', anketa: state.anketa || {} };
+    fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      .then(function (r) { if (!r.ok) { var he = new Error('HTTP ' + r.status); he.server = true; throw he; } return r.json(); })
+      .then(function (d) {
+        if (ep !== resetEpoch) { return; }
+        if (!d || typeof d.reply !== 'string') { var be = new Error('bad response'); be.server = true; throw be; }
+        // Діалог в оператора або передано оператору: Оля мовчить, відповідь оператора прийде опитуванням.
+        if (typeof d.taken === 'boolean') { setTaken(d.taken); }
+        if (d.reply) { state.messages.push({ role: 'assistant', content: d.reply }); }
+        state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 6).map(function (b) { return String(b).slice(0, 40); }) : [];
+        if (!d.operator) { state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress'; }
+        if (typeof d.closed === 'string') { state.closed = d.closed; }
+        if (d.anketa && typeof d.anketa === 'object' && !Array.isArray(d.anketa)) { state.anketa = d.anketa; }
+        // Бажаний час, як його зрозумів двигун 2.0: возимо назад наступним запитом, самі нічого не рахуємо.
+        if (d.chas && typeof d.chas === 'object' && !Array.isArray(d.chas)) { state.chas = d.chas; }
+        // Оля передала розмову оператору в чаті: для пацієнта розмова не закінчена, наступні репліки йдуть оператору з handoff.
+        if (!d.operator && state.status === 'transfer' && state.messages.slice(-3).some(function (m) { return m.role === 'assistant' && !m.from && HANDOFF_RE.test(m.content); })) { state.handoff = true; }
+        if (d.booking && d.booking.apparatus) { state.booking = d.booking; }
+        // 25.09: ескалацію рахує сервер за відповідями пацієнта: виправлена відповідь її знімає, тому прапорець не «липне».
+        if (typeof d.escalated === 'boolean') { state.escalated = d.escalated; }
+        if (d.contrast === 'так' || d.contrast === 'ні') { state.contrast = d.contrast; }
+        busy = false; save(); render(); focusInput(keepFocus);
+      })
+      .catch(function (err) {
+        if (ep !== resetEpoch) { return; }
+        state.messages.pop();
+        state.buttons = prevButtons;
+        busy = false; save(); render();
+        add('err', err && err.server
+          ? 'Технічна помилка на нашому боці. Спробуйте, будь ласка, ще раз за хвилину.'
+          : 'Не вдалося надіслати повідомлення. Перевірте інтернет і спробуйте ще раз.');
+        if (!ta.value) { ta.value = text; }
+        focusInput(keepFocus); scroll();
+      });
+  }
+
+  /* ---------- форма швидкого запису ---------- */
+  var formDone = null;   // відповідь сервера після успішної відправки
+  var formBusy = false;
+  var formPreferred = '';   // бажаний час, з яким пішла заявка: показуємо його на екрані подяки
+
+  function loadDraft() { try { return JSON.parse(sessionStorage.getItem(FORM_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function saveDraft(v) { try { sessionStorage.setItem(FORM_KEY, JSON.stringify(v)); } catch (e) {} }
+
+  var ZONE_GROUPS = [
+    ['Голова', ['Головний мозок', 'Гіпофіз', 'Орбіти', 'Пазухи носа', 'Вуха', 'Лицьовий скелет', 'Скронево-щелепні суглоби']],
+    ['Хребет', ['Шийний відділ', 'Грудний відділ', 'Поперековий відділ', 'Крижі і куприк', 'Спинний мозок', 'Увесь хребет']],
+    ['Суглоби', ['Плечовий суглоб', 'Ліктьовий суглоб', 'Кисть і зап’ясток', 'Кульшовий суглоб', 'Колінний суглоб', 'Гомілково-ступневий суглоб', 'Стопа']],
+    ['Шия і груди', ['М’які тканини шиї', 'Органи грудної клітки', 'Грудні залози', 'Серце', 'Грудина і ключиці']],
+    ['Живіт', ['Черевна порожнина', 'Печінка', 'Підшлункова залоза', 'Нирки', 'Наднирники', 'Жовчний міхур і протоки', 'Селезінка', 'Кишківник']],
+    ['Таз', ['Органи малого таза', 'Простата', 'Матка й придатки', 'Сечовий міхур', 'Пряма кишка', 'Кістки таза']],
+    ['Судини', ['Судини головного мозку', 'Судини шиї', 'Аорта', 'Судини ніг', 'Судини нирок', 'Вени']]
+  ];
+
+  function chips(name, opts, cls) {
+    return '<div class="chips' + (cls ? ' ' + cls : '') + '" data-chips="' + name + '">' + opts.map(function (o) { return '<button type="button" data-val="' + esc(o) + '">' + esc(o) + '</button>'; }).join('') + '</div>';
+  }
+  // step — крок покрокової форми (07.10): поле з'являється, коли заповнені всі попередні кроки.
+  function fld(name, label, inner, ifs, opt, step) {
+    return '<div class="fld" data-fld="' + name + '"' + (ifs ? ' data-if="' + ifs + '"' : '') + (step ? ' data-step="' + step + '"' : '') + '>'
+      + (label ? '<div class="l">' + label + (opt ? ' <span class="opt">необов\'язково</span>' : '') + '</div>' : '')
+      + inner + '<div class="fe" hidden></div></div>';
+  }
+  // Компактна мітка замість рядка з перемикачем (07.10): усі разом, займають мало місця.
+  function tg(name, label, ifs) {
+    return '<label class="tg"' + (ifs ? ' data-if="' + ifs + '"' : '') + '><input type="checkbox" name="' + name + '"><span>' + label + '</span></label>';
+  }
+  function swRow(name, label, ifs) {
+    return '<label class="swr"' + (ifs ? ' data-if="' + ifs + '"' : '') + '><span>' + label + '</span><span class="switch"><input type="checkbox" name="' + name + '"><i></i></span></label>';
+  }
+
+  // 07.10 (вказівка користувача): форма покрокова — спершу лише «Яке обстеження», далі кожне поле з'являється після
+  // попереднього; перемикачі стану здоров'я — компактні мітки всі разом із кнопкою «Далі», щоб пропустити їх одним махом.
+  function formHtml() {
+    return '<form class="f" novalidate>'
+      + '<div class="note103">Якщо це невідкладний стан (ознаки інсульту, тяжка травма, гострий біль у животі, кровотеча), не заповнюйте форму, а телефонуйте 103.</div>'
+      + '<h4 data-step="1">Обстеження</h4>'
+      + fld('modality', 'Яке обстеження', chips('modality', ['КТ', 'МРТ'], 'seg'), '', false, 1)
+      + fld('zone', 'Що обстежуємо', chips('zone_group', ZONE_GROUPS.map(function (g) { return g[0]; })) + '<div class="sub2" data-zone-sub hidden></div>', '', false, 2)
+      + fld('apparatus', 'Апарат МРТ', chips('apparatus', ['1,5 Тесла', '3 Тесла'], 'seg') + '<div class="hint">Не впевнені, пропустіть, оператор підбере</div>', 'mri', true, 3)
+      + fld('contrast', 'Контраст', chips('contrast', ['З контрастом', 'Без контрасту'], 'seg'), '', false, 3)
+      + '<h4 data-step="4">Пацієнт</h4>'
+      + fld('age', 'Повних років', '<div class="agew"><input type="text" name="age" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="35" autocomplete="off"><span>років</span></div>'
+        + '<div class="tgs" style="margin-top:10px">' + tg('for_other', 'Записую іншу людину') + '</div>', '', false, 4)
+      + fld('weight', 'Вага', chips('weight', ['До 100 кг', '100-120 кг', 'Понад 120 кг'], 'seg'), '', false, 5)
+      + fld('girth', 'Обхват тіла в найгрубшому місці при опущених руках', chips('girth', ['До 140 см', '140-160 см', 'Понад 160 см'], 'seg'), 'mri', false, 6)
+      + fld('knee', 'Обхват у ділянці коліна', chips('knee', ['До 45 см', '45-59 см', 'Понад 59 см'], 'seg'), 'mri knee', false, 7)
+      + '<div class="fld tgblock" data-fld="toggles" data-step="8">'
+      + '<div class="l">Відмітьте, що стосується пацієнта</div>'
+      + '<div class="hint">Якщо нічого з цього, просто натисніть «Далі»</div>'
+      + '<div class="tgs">'
+      + tg('pacemaker', 'Кардіостимулятор', 'mri')
+      + tg('defibrillator', 'Дефібрилятор', 'mri')
+      + tg('neurostimulator', 'Нейростимулятор', 'mri')
+      + tg('stents', 'Стенти', 'mri')
+      + tg('joint_prosthesis', 'Суглобові протези', 'mri')
+      + tg('metal_fragments', 'Металеві осколки', 'mri')
+      + tg('implants', 'Інші металеві імпланти, пластини', 'mri')
+      + tg('implants_docs', 'Є паспорт чи довідка на імпланти', 'mri implants')
+      + tg('lens', 'Імплантований кришталик ока', 'mri')
+      + tg('lens_recent', 'Операція на оці менше 3 місяців тому', 'mri lens')
+      + tg('cannot_lie', 'Важко лежати нерухомо 20-40 хв', 'mri')
+      + tg('claustro', 'Страх закритого простору', 'mri')
+      + tg('biopsy', 'Була біопсія простати', 'mri prostate')
+      + tg('biopsy_recent', 'Біопсія менше 7 тижнів тому', 'mri prostate biopsy')
+      + tg('primovist', 'Лікар призначив Примовіст', 'mri liver')
+      + tg('anemia', 'Анемія, гемоглобін нижче 80', 'ct contrast')
+      + tg('lactation', 'Годую груддю', 'contrast')
+      + tg('pregnancy', 'Вагітність', 'ct')
+      + '</div>'
+      + '<input type="hidden" name="tg_done">'
+      + '<button type="button" class="next" data-next="tg">Далі</button>'
+      + '</div>'
+      + fld('gfr', 'Аналіз на креатинін і ШКФ', chips('gfr', ['Немає', 'Є, ШКФ у нормі', 'Є, ШКФ низька'], 'seg') + '<div class="hint" data-gfr-hint></div>'
+        + '<div class="tgs" style="margin-top:10px">' + tg('gfr_old', 'Аналізу більше 14 днів', 'contrast gfr_has') + '</div>', 'contrast', false, 9)
+      + fld('referral', 'Скерування від лікаря', chips('referral', ['Є', 'Немає'], 'seg'), 'referral', false, 10)
+      + '<h4 data-step="11">Коли зручно</h4>'
+      + fld('preferred_date', 'Бажаний день', '<input type="date" name="preferred_date" min="' + dayISO(0) + '" max="' + dayISO(60) + '">', '', false, 11)
+      + fld('preferred_part', 'Бажана частина дня', chips('day_part', DAY_PARTS)
+        + '<div class="exact"><input type="time" name="exact_time"><span>точна година, необов\'язково</span></div>'
+        + '<div class="hint">Точний час підтвердить оператор.</div>', '', false, 12)
+      + '<h4 data-step="13">Контакт</h4>'
+      + '<div class="two" data-step="13">'
+      + fld('first_name', 'Ім’я', '<input type="text" name="first_name" autocomplete="given-name" maxlength="40" placeholder="Оксана">')
+      + fld('last_name', 'Прізвище', '<input type="text" name="last_name" autocomplete="family-name" maxlength="40" placeholder="Шевченко">')
+      + '</div>'
+      + fld('phone', 'Телефон', '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="+380 __ ___ __ __" maxlength="19">', '', false, 14)
+      + fld('consent', '', '<label class="chk"><input type="checkbox" name="consent"><span>Погоджуюсь на обробку персональних даних для запису на обстеження</span></label>', '', false, 15)
+      + '<button type="submit" class="submit" data-step="15">Надіслати заявку</button>'
+      + '<div class="hint" style="text-align:center" data-step="15">Оператор передзвонить і підтвердить час</div>'
+      + '</form>';
+  }
+
+  function vals(form) {
+    var v = {};
+    form.querySelectorAll('.chips').forEach(function (c) { v[c.getAttribute('data-chips')] = c.getAttribute('data-value') || ''; });
+    form.querySelectorAll('input[name],select[name]').forEach(function (i) { v[i.name] = i.type === 'checkbox' ? i.checked : i.value.trim(); });
+    return v;
+  }
+  function zoneText(v) {
+    return v.zone_item || '';
+  }
+  function conds(v) {
+    var z = zoneText(v).toLowerCase();
+    var mri = v.modality === 'МРТ', ct = v.modality === 'КТ', contrast = v.contrast === 'З контрастом';
+    return {
+      mri: mri, ct: ct, contrast: contrast,
+      knee: /колін/.test(z), prostate: /простат/.test(z), liver: /печінк/.test(z),
+      implants: !!(v.implants || v.stents || v.joint_prosthesis || v.metal_fragments), lens: !!v.lens, biopsy: !!v.biopsy,
+      gfr_has: v.gfr === 'Є, ШКФ у нормі' || v.gfr === 'Є, ШКФ низька',
+      referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast)))
+    };
+  }
+  // Бажаний час замість вибору слота (29.09): чіткого запису немає, можливість дня і години перевіряє двигун 2.0 на сервері.
+  var DAY_PARTS = ['Зранку', 'В обід', 'Після обіду', 'Ввечері', 'Будь-коли'];
+  // Межі поля дати: сьогодні і сьогодні плюс 60 днів, у форматі, який розуміє input type=date.
+  function dayISO(plus) {
+    var d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + (plus || 0));
+    var m = d.getMonth() + 1, n = d.getDate();
+    return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (n < 10 ? '0' + n : n);
+  }
+  // На сервер день іде як «дд.мм»: саме цей формат розуміє двигун бажаного часу.
+  function ddmm(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? m[3] + '.' + m[2] : '';
+  }
+  // Точна година, якщо пацієнт її вписав, перемагає чипс частини дня.
+  function partOfDay(v) { return v.exact_time || v.day_part || ''; }
+  // Покрокова форма (07.10): номер першого незаповненого кроку; видно кроки до нього включно.
+  var ageCommitted = false, nameCommitted = false, lastStep = 0;
+  function stepReached(v, c) {
+    var age = +v.age;
+    var done = [
+      !!v.modality,
+      !!zoneText(v),
+      !!v.contrast,
+      /^\d{1,3}$/.test(v.age || '') && age >= 0 && age <= 120 && ((v.age || '').length >= 2 || ageCommitted),
+      !!v.weight,
+      !c.mri || !!v.girth,
+      !(c.mri && c.knee) || !!v.knee,
+      v.tg_done === '1',
+      !c.contrast || !!v.gfr,
+      !c.referral || !!v.referral,
+      !!v.preferred_date && v.preferred_date >= dayISO(0) && v.preferred_date <= dayISO(60),
+      !!partOfDay(v),
+      !!v.first_name && !!v.last_name && nameCommitted,
+      /^\+380 \d{2} \d{3} \d{2} \d{2}$/.test(v.phone || '')
+    ];
+    for (var i = 0; i < done.length; i++) { if (!done[i]) { return i + 1; } }
+    return done.length + 1;
+  }
+  function applyVisibility(form) {
+    var v = vals(form), c = conds(v);
+    var reached = stepReached(v, c);
+    form.querySelectorAll('[data-if],[data-step]').forEach(function (el) {
+      var ifs = el.getAttribute('data-if');
+      var keys = ifs ? ifs.split(/\s+/) : [];
+      var show = !keys.length || keys.every(function (k) { return c[k]; });
+      var st = +(el.getAttribute('data-step') || 0);
+      if (st && st > reached) { show = false; }
+      el.hidden = !show;
+    });
+    form.querySelectorAll('.tg').forEach(function (l) { var i = l.querySelector('input'); l.classList.toggle('on', !!(i && i.checked)); });
+    // Новий крок з'явився — плавно показуємо його.
+    if (reached > lastStep && lastStep) {
+      var nx = null;
+      form.querySelectorAll('[data-step]').forEach(function (el) { if (!nx && !el.hidden && +el.getAttribute('data-step') > lastStep) { nx = el; } });
+      if (nx) { setTimeout(function () { nx.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 30); }
+    }
+    lastStep = reached;
+    // підказка до ШКФ залежно від модальності
+    var gh = form.querySelector('[data-gfr-hint]');
+    if (gh) { gh.textContent = c.ct ? 'Низька для КТ: 52 мл/хв і менше' : c.mri ? 'Низька для МРТ: 32 мл/хв і менше' : ''; }
+    saveDraft(v);
+  }
+  function setChips(c, value) {
+    if (!c) { return; }
+    c.setAttribute('data-value', value || '');
+    c.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-val') === value); });
+    if (c.getAttribute('data-chips') === 'zone_group') { renderZoneSub(c.closest('form'), value); }
+    var fldEl = c.closest('.fld'); if (fldEl && value) { clearErr(fldEl); }
+  }
+  function renderZoneSub(form, group) {
+    var box = form.querySelector('[data-zone-sub]');
+    var g = ZONE_GROUPS.filter(function (x) { return x[0] === group; })[0];
+    var items = g ? g[1] : [];
+    box.innerHTML = items.length ? '<div class="sl">Оберіть ділянку в групі <b>' + esc(group) + '</b></div>' + chips('zone_item', items) : '';
+    box.hidden = !items.length;
+  }
+  function fillDraft(form, d) {
+    if (d.zone_group) { setChips(form.querySelector('.chips[data-chips="zone_group"]'), d.zone_group); }
+    Object.keys(d).forEach(function (k) {
+      var c = form.querySelector('.chips[data-chips="' + k + '"]');
+      if (c) { if (k !== 'zone_group') { setChips(c, d[k]); } return; }
+      var i = form.querySelector('[name="' + k + '"]');
+      if (!i) { return; }
+      if (i.type === 'checkbox') { i.checked = !!d[k]; } else { i.value = d[k] == null ? '' : d[k]; }
+    });
+  }
+  function formatPhone(raw) {
+    var d = String(raw || '').replace(/\D/g, '');
+    if (d.slice(0, 3) === '380') { d = d.slice(3); } else if (d.charAt(0) === '0') { d = d.slice(1); } else if (d.slice(0, 2) === '80') { d = d.slice(2); }
+    d = d.slice(0, 9);
+    var out = '+380';
+    if (d.length) { out += ' ' + d.slice(0, 2); }
+    if (d.length > 2) { out += ' ' + d.slice(2, 5); }
+    if (d.length > 5) { out += ' ' + d.slice(5, 7); }
+    if (d.length > 7) { out += ' ' + d.slice(7, 9); }
+    return d.length ? out : '';
+  }
+
+  function setErr(form, name, msg) {
+    var el = form.querySelector('.fld[data-fld="' + name + '"]');
+    if (!el) { return; }
+    el.classList.add('invalid');
+    var fe = el.querySelector('.fe'); fe.hidden = false; fe.textContent = msg;
+  }
+  function clearErr(el) { el.classList.remove('invalid'); var fe = el.querySelector('.fe'); if (fe) { fe.hidden = true; fe.textContent = ''; } }
+  function validate(form, v) {
+    var c = conds(v), e = {};
+    if (!v.modality) { e.modality = 'Оберіть КТ або МРТ'; }
+    if (!zoneText(v)) { e.zone = v.zone_group ? 'Оберіть ділянку' : 'Оберіть групу, потім ділянку'; }
+    if (!v.contrast) { e.contrast = 'Оберіть, з контрастом чи без'; }
+    if (!v.age) { e.age = 'Вкажіть вік'; } else if (+v.age < 0 || +v.age > 120) { e.age = 'Перевірте вік'; }
+    if (!v.weight) { e.weight = 'Оберіть вагу'; }
+    if (c.mri && !v.girth) { e.girth = 'Оберіть обхват'; }
+    if (c.mri && c.knee && !v.knee) { e.knee = 'Оберіть обхват коліна'; }
+    if (c.contrast && !v.gfr) { e.gfr = 'Оберіть варіант'; }
+    if (c.referral && !v.referral) { e.referral = 'Є скерування чи немає?'; }
+    if (!v.preferred_date) { e.preferred_date = 'Оберіть бажаний день'; }
+    else if (v.preferred_date < dayISO(0) || v.preferred_date > dayISO(60)) { e.preferred_date = 'Оберіть день від сьогодні і в межах найближчих 60 днів'; }
+    if (!partOfDay(v)) { e.preferred_part = 'Оберіть частину дня або вкажіть точну годину'; }
+    if (!v.first_name) { e.first_name = 'Вкажіть ім’я'; }
+    if (!v.last_name) { e.last_name = 'Вкажіть прізвище'; }
+    if (!/^\+380 \d{2} \d{3} \d{2} \d{2}$/.test(v.phone)) { e.phone = 'Введіть повний номер'; }
+    if (!v.consent) { e.consent = 'Без згоди заявку надіслати не можна'; }
+    if (v.age && +v.age < 18 && c.contrast) { e.contrast = 'Дітям до 18 років обстеження з контрастною речовиною, і КТ, і МРТ, ми не проводимо. Оберіть «Без контрасту», а потребу в контрасті вирішить лікар'; }
+    return e;
+  }
+
+  function renderForm() {
+    if (formDone) { renderDone(); return; }
+    body.innerHTML = formHtml();
+    var form = body.querySelector('form');
+    var dr = loadDraft();
+    ageCommitted = !!dr.age; nameCommitted = !!(dr.first_name && dr.last_name); lastStep = 0;
+    fillDraft(form, dr);
+    applyVisibility(form);
+    form.addEventListener('click', function (e) {
+      var nb = e.target.closest('[data-next="tg"]');
+      if (!nb) { return; }
+      form.querySelector('input[name="tg_done"]').value = '1';
+      applyVisibility(form);
+    });
+    form.addEventListener('focusout', function (e) {
+      var n = e.target && e.target.name;
+      if (n === 'age' && e.target.value) { ageCommitted = true; applyVisibility(form); }
+      if ((n === 'first_name' || n === 'last_name') && form.querySelector('[name=first_name]').value.trim() && form.querySelector('[name=last_name]').value.trim()) { nameCommitted = true; applyVisibility(form); }
+    });
+    form.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.target && /^(age|first_name|last_name)$/.test(e.target.name)) { e.preventDefault(); e.target.blur(); }
+    });
+
+    form.addEventListener('click', function (e) {
+      var b = e.target.closest('.chips button');
+      if (!b) { return; }
+      var c = b.parentNode;
+      var cur = c.getAttribute('data-value');
+      var val = b.getAttribute('data-val');
+      setChips(c, c.classList.contains('seg') ? val : (cur === val ? '' : val));
+      applyVisibility(form);
+    });
+    form.addEventListener('input', function (e) {
+      var t = e.target;
+      if (t.name === 'phone') { var p = t.selectionEnd === t.value.length; t.value = formatPhone(t.value); }
+      if (t.name === 'age') { t.value = t.value.replace(/\D/g, '').slice(0, 3); }
+      var f = t.closest('.fld'); if (f && t.value) { clearErr(f); }
+      applyVisibility(form);
+    });
+    form.addEventListener('change', function (e) {
+      var f = e.target.closest('.fld'); if (f && (e.target.value || e.target.checked)) { clearErr(f); }
+      applyVisibility(form);
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (formBusy) { return; }
+      var v = vals(form);
+      var errs = validate(form, v);
+      form.querySelectorAll('.fld').forEach(clearErr);
+      var keys = Object.keys(errs);
+      if (keys.length) {
+        keys.forEach(function (k) { setErr(form, k, errs[k]); });
+        var first = form.querySelector('.fld.invalid');
+        first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        var inp = first.querySelector('input:not([type=checkbox]),select'); if (inp) { inp.focus({ preventScroll: true }); }
+        return;
+      }
+      formBusy = true;
+      var btn = form.querySelector('.submit'); btn.disabled = true; btn.textContent = 'Надсилаю...';
+      // Бажаний час: день окремо в «дд.мм», частина дня або точна година окремо, плюс людський підпис на обидва поля.
+      formPreferred = ddmm(v.preferred_date) + ', ' + partOfDay(v).toLowerCase();
+      var payload = {
+        session_id: 'fm-' + uid().slice(3), site: SITE, page: location.href,
+        modality: v.modality, zone: zoneText(v), apparatus: v.apparatus, contrast: v.contrast.toLowerCase(),
+        for_other: v.for_other, age: v.age, weight_band: v.weight, girth_band: v.girth, knee_band: v.knee,
+        implants: v.implants, implants_docs: v.implants_docs, pacemaker: v.pacemaker, lens: v.lens, lens_recent: v.lens_recent,
+        defibrillator: v.defibrillator, neurostimulator: v.neurostimulator, stents: v.stents, joint_prosthesis: v.joint_prosthesis, metal_fragments: v.metal_fragments,
+        cannot_lie: v.cannot_lie, claustro: v.claustro, biopsy: v.biopsy, biopsy_recent: v.biopsy_recent, primovist: v.primovist,
+        gfr_status: v.gfr, gfr_old: v.gfr_old, anemia: v.anemia, lactation: v.lactation, pregnancy: v.pregnancy,
+        referral: v.referral.toLowerCase(),
+        preferred_date: ddmm(v.preferred_date), preferred_part: partOfDay(v), preferred_time: formPreferred,
+        name: v.first_name + ' ' + v.last_name, first_name: v.first_name, last_name: v.last_name,
+        phone: v.phone, consent: v.consent
+      };
+      var ep = resetEpoch;
+      fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(function (r) { return r.json().then(function (d) { return { status: r.status, d: d }; }); })
+        .then(function (x) {
+          if (ep !== resetEpoch) { return; }
+          formBusy = false;
+          if (x.status === 200 && x.d && x.d.ok) { formDone = x.d; try { sessionStorage.removeItem(FORM_KEY); } catch (e2) {} render(); return; }
+          var msg = (x.d && x.d.errors && x.d.errors.length) ? x.d.errors.join('. ') : 'Не вдалося надіслати заявку. Спробуйте ще раз або напишіть у чат.';
+          setErr(form, 'consent', msg); btn.disabled = false; btn.textContent = 'Надіслати заявку';
+        })
+        .catch(function () {
+          if (ep !== resetEpoch) { return; }
+          formBusy = false;
+          setErr(form, 'consent', 'Не вдалося надіслати заявку. Перевірте інтернет і спробуйте ще раз.');
+          btn.disabled = false; btn.textContent = 'Надіслати заявку';
+        });
+    });
+  }
+
+  function renderDone() {
+    var d = formDone;
+    var h = '<div class="done"><div class="ok"><b>Дякуємо' + (d.name ? ', ' + esc(d.name) : '') + '. Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
+    // Чіткого запису немає: показуємо той бажаний час, з яким пішла заявка.
+    var pref = d.preferred_time || formPreferred;
+    if (pref) { h += '<div class="booked">Бажаний час: <b>' + esc(pref) + '</b>. Оператор підтвердить точний час і передзвонить.</div>'; }
+    (d.notes || []).forEach(function (n) { h += '<p>' + esc(n) + '</p>'; });
+    if ((d.preparation || []).length) { h += '<h4>Підготовка</h4>'; }
+    (d.preparation || []).forEach(function (p) { h += '<p>' + esc(p) + '</p>'; });
+    h += '<button type="button" class="restart">Заповнити ще одну заявку</button></div>';
+    body.innerHTML = h;
+    body.querySelector('.restart').addEventListener('click', function () { formDone = null; render(); });
+    body.scrollTop = 0;
+  }
+
+  function mount() {
+    document.body.appendChild(host);
+    if (state.open) { setOpen(true); }
+  }
+  if (document.body) { mount(); } else { document.addEventListener('DOMContentLoaded', mount); }
+})();

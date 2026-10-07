@@ -65,7 +65,8 @@ header .tel{margin-left:auto;font-weight:600;color:var(--c);white-space:nowrap}
   document.documentElement.style.setProperty('--c', color);
   if (mrt3t) { document.getElementById('logo').textContent = 'АБСОЛЮТ МРТ 3T'; document.getElementById('tel').textContent = '0 (800) 30-40-40'; }
   var s = document.createElement('script');
-  s.src = 'widget.js?v=' + Date.now(); // стенд: без кешу, щоб правки було видно одразу
+  // 07.10: стенд показує новий вигляд (widget_v2.js) на погодження; сайти клієнта підтягують widget.js, його не змінено.
+  s.src = 'widget_v2.js?v=' + Date.now(); // стенд: без кешу, щоб правки було видно одразу
   // 07.10: стенд на чаті 2.0 (мозок головної Олі 2.0); ?chat=1 — старий чат для порівняння.
   s.dataset.endpoint = 'https://n8n.businessautomation.space/webhook/' + (/[?&]chat=1/.test(location.search) ? 'absolutmed-chat' : 'absolutmed-chat2');
   s.dataset.color = color;
