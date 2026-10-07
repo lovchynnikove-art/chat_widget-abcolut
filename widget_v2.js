@@ -471,7 +471,7 @@
       + grp('Очі', 'mri',
           swRow('lens', 'Імплантований кришталик ока', 'mri') + swRow('lens_recent', 'Операція на оці менше 3 місяців тому', 'mri lens', true))
       + grp('Під час обстеження', 'mri',
-          swRow('cannot_lie', 'Важко лежати нерухомо 20-40 хвилин', 'mri') + swRow('claustro', 'Страх закритого простору', 'mri'))
+          swRow('cannot_lie', 'Не зможу лежати нерухомо 20–40 хвилин', 'mri') + swRow('claustro', 'Страх закритого простору', 'mri'))
       + grp('Простата', '',
           swRow('biopsy', 'Була біопсія простати', 'mri prostate') + swRow('biopsy_recent', 'Біопсія менше 7 тижнів тому', 'mri prostate biopsy', true), 'mri prostate')
       + grp('Печінка', '', swRow('primovist', 'Лікар призначив контраст Примовіст', 'mri liver'), 'mri liver')
