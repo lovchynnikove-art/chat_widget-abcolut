@@ -153,7 +153,12 @@
     + '.grp .swr{border:0;border-radius:0;border-top:1px solid #eef1f5;padding:9px 12px;font-size:14px}'
     + '.grp .gt+.swr{border-top:0}'
     + '.grp .swr.dep{padding-left:26px;background:#f8fafc;font-size:13.5px}'
-    + '.timesel{max-width:190px}'
+    + '.tpick{margin-top:12px}'
+    + '.tpick .tl{font-size:12.5px;font-weight:600;color:#5b6675;margin-bottom:6px}'
+    + '.tgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}'
+    + '.tgrid button{border:1.5px solid #d5dae2;background:#fff;border-radius:10px;padding:7px 0;font:inherit;font-size:13.5px;cursor:pointer;color:#1c2430}'
+    + '.tgrid button:hover{border-color:' + COLOR + '}'
+    + '.tgrid button.on{background:' + COLOR + ';border-color:' + COLOR + ';color:#fff}'
     + '.next{margin-top:12px;border:1.5px solid ' + COLOR + ';background:#fff;color:' + COLOR + ';border-radius:12px;padding:9px 18px;font:inherit;font-weight:600;font-size:14px;cursor:pointer}'
     + '.next:hover{background:' + COLOR + ';color:#fff}'
     + '.f [data-step]{animation:am-in .25s ease}'
@@ -486,7 +491,8 @@
       + '<h4 data-step="11">Коли зручно</h4>'
       + fld('preferred_date', 'Бажаний день', '<input type="date" name="preferred_date" min="' + dayISO(0) + '" max="' + dayISO(60) + '">', '', false, 11)
       + fld('preferred_part', 'Бажана частина дня', chips('day_part', DAY_PARTS)
-        + '<div class="exact"><select name="exact_time" class="timesel">' + TIME_OPTS + '</select><span>точна година, необов\'язково</span></div>'
+        + '<div class="tpick" hidden><div class="tl">Точна година <span class="opt">необов\'язково</span></div><div class="tgrid" data-times></div></div>'
+        + '<input type="hidden" name="exact_time">'
         + '<div class="hint">Точний час підтвердить оператор.</div>', '', false, 12)
       + '<h4 data-step="13">Контакт</h4>'
       + '<div class="two" data-step="13">'
@@ -522,12 +528,13 @@
   }
   // Бажаний час замість вибору слота (29.09): чіткого запису немає, можливість дня і години перевіряє двигун 2.0 на сервері.
   var DAY_PARTS = ['Зранку', 'В обід', 'Після обіду', 'Ввечері', 'Будь-коли'];
-  // Точна година (07.10): гарний список з кроком 30 хвилин у робочі години апаратів, а не системний годинник.
-  var TIME_OPTS = (function () {
-    var o = '<option value="">Не важливо</option>';
-    for (var h = 8; h <= 21; h++) { ['00', '30'].forEach(function (m) { if (h === 21 && m === '30') { return; } var t = (h < 10 ? '0' : '') + h + ':' + m; o += '<option value="' + t + '">' + t + '</option>'; }); }
-    return o;
-  })();
+  // Точна година (07.10): кнопки з кроком 30 хвилин лише для обраної частини дня; «Будь-коли» — без годин.
+  function halfHours(from, to) {
+    var out = [];
+    for (var m = from * 60; m <= to * 60; m += 30) { var h = Math.floor(m / 60), mm = m % 60; out.push((h < 10 ? '0' : '') + h + ':' + (mm ? '30' : '00')); }
+    return out;
+  }
+  var TIME_RANGES = { 'Зранку': halfHours(8, 11.5), 'В обід': halfHours(12, 13.5), 'Після обіду': halfHours(14, 16.5), 'Ввечері': halfHours(17, 21) };
   // Межі поля дати: сьогодні і сьогодні плюс 60 днів, у форматі, який розуміє input type=date.
   function dayISO(plus) {
     var d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + (plus || 0));
@@ -567,6 +574,19 @@
   function applyVisibility(form) {
     var v = vals(form), c = conds(v);
     var reached = stepReached(v, c);
+    // Години для обраної частини дня; якщо частину дня змінили, а година з іншого проміжку — знімаємо її.
+    var tbox = form.querySelector('[data-times]');
+    if (tbox) {
+      var rng = TIME_RANGES[v.day_part] || [];
+      var et = form.querySelector('input[name="exact_time"]');
+      if (et.value && rng.indexOf(et.value) === -1) { et.value = ''; v.exact_time = ''; }
+      if (tbox.getAttribute('data-for') !== (v.day_part || '')) {
+        tbox.setAttribute('data-for', v.day_part || '');
+        tbox.innerHTML = rng.map(function (t) { return '<button type="button" data-time="' + t + '">' + t + '</button>'; }).join('');
+      }
+      tbox.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-time') === et.value); });
+      tbox.parentNode.hidden = !rng.length;
+    }
     form.querySelectorAll('[data-if-any]').forEach(function (el) {
       el.hidden = !el.getAttribute('data-if-any').split(/\s+/).some(function (k) { return c[k]; });
     });
@@ -665,6 +685,13 @@
     fillDraft(form, dr);
     applyVisibility(form);
     form.addEventListener('click', function (e) {
+      var tb = e.target.closest('[data-time]');
+      if (tb) {
+        var et = form.querySelector('input[name="exact_time"]');
+        et.value = et.value === tb.getAttribute('data-time') ? '' : tb.getAttribute('data-time');
+        applyVisibility(form);
+        return;
+      }
       var nb = e.target.closest('[data-next="tg"]');
       if (!nb) { return; }
       form.querySelector('input[name="tg_done"]').value = '1';
