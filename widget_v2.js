@@ -121,6 +121,8 @@
     + '.fld .opt{font-weight:400;color:#9aa4b1;font-size:12px}'
     + '.f input[type=text],.f input[type=tel],.f input[type=date],.f input[type=time],.f select{width:100%;border:1.5px solid #d5dae2;border-radius:12px;padding:11px 13px;font:inherit;font-size:15px;background:#fff;outline:none;color:#1c2430;-webkit-appearance:none;appearance:none}'
     + '.two{display:flex;gap:10px}.two .fld{flex:1;min-width:0}'
+    // 07.10: атрибут hidden має перемагати display:flex рядків (.swr, .two), інакше залежні рядки й кроки видно завжди.
+    + '[hidden]{display:none!important}'
     + '.agew{display:flex;align-items:center;gap:10px}.agew input{width:96px!important;text-align:center;font-size:17px!important}.agew span{color:#5b6675;font-size:14px}'
     + '.f select{background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%237a8594%27 stroke-width=%272%27%3E%3Cpath d=%27M6 9l6 6 6-6%27/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px}'
     + '.f input:focus,.f select:focus{border-color:' + COLOR + ';box-shadow:0 0 0 3px rgba(0,0,0,.05)}'
