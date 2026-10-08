@@ -138,6 +138,9 @@
     + '.sub2 .sl{font-size:12px;color:#5b6675;margin:0 0 8px}.sub2 .sl b{color:#1c2430;font-weight:600}'
     + '.sub2 .chips{gap:6px}.sub2 .chips button{font-size:13px;padding:7px 12px;border-radius:16px;background:#fff;border-color:#c9d3df}'
     + '.sub2 .chips button.on{background:' + COLOR + ';border-color:' + COLOR + '}'
+    + '.sub2 .chips.list{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px}'
+    + '.sub2 .chips.list button{border-radius:10px;text-align:left;padding:8px 10px;line-height:1.25}'
+    + '@media (max-width:360px){.sub2 .chips.list{grid-template-columns:1fr}}'
     + '.swr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:#fff;border:1px solid #e6e9ee;border-radius:12px;cursor:pointer;line-height:1.3}'
     + '.switch{position:relative;flex:none;width:44px;height:26px}'
     + '.switch input{opacity:0;width:0;height:0;position:absolute}'
@@ -745,8 +748,9 @@
     if (box.getAttribute('data-for') === mod + '|' + (group || '')) { return; }
     box.setAttribute('data-for', mod + '|' + (group || ''));
     var g = zoneGroups(mod).filter(function (x) { return x[0] === group; })[0];
-    var items = g ? g[1].map(function (it) { return it[0]; }) : [];
-    box.innerHTML = items.length ? '<div class="sl">Оберіть ділянку в групі <b>' + esc(group) + '</b></div>' + chips('zone_item', items) : '';
+    // 08.10 (вказівка користувача): ділянки за абеткою і в дві колонки — так їх легше знайти очима.
+    var items = g ? g[1].map(function (it) { return it[0]; }).sort(function (x, y) { return x.localeCompare(y, 'uk'); }) : [];
+    box.innerHTML = items.length ? '<div class="sl">Оберіть ділянку в групі <b>' + esc(group) + '</b></div>' + chips('zone_item', items, 'list') : '';
     box.hidden = !items.length;
   }
   function fillDraft(form, d) {
