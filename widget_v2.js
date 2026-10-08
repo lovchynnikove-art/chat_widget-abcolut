@@ -185,7 +185,7 @@
     + '.fld.invalid .chips button:not(.on){border-color:#f0b4ae}'
     + '.fld.invalid .chk{border-color:#e05a4e}'
     + '.f .submit{border:0;border-radius:12px;background:' + COLOR + ';color:#fff;font:inherit;font-weight:600;font-size:16px;padding:14px;cursor:pointer;margin-top:4px}'
-    + '.f .submit:disabled{opacity:.6;cursor:default}'
+    + '.f .submit:disabled{opacity:.45;cursor:not-allowed}'
     + '.done{display:flex;flex-direction:column;gap:10px;font-size:14px}'
     + '.done .ok{background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
     + '.done .ok b{display:block;font-size:16px;margin-bottom:6px;color:' + COLOR + '}'
@@ -662,6 +662,8 @@
     if (gh) { gh.textContent = c.ct ? 'Низька для КТ: 52 мл/хв і менше' : c.mri ? 'Низька для МРТ: 32 мл/хв і менше' : ''; }
     var dn = form.querySelector('[data-day-name]');
     if (dn) { var dd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.preferred_date || ''); dn.textContent = dd ? ['неділя', 'понеділок', 'вівторок', 'середа', 'четвер', "п'ятниця", 'субота'][new Date(+dd[1], +dd[2] - 1, +dd[3], 12).getDay()] : ''; }
+    // 08.10 (вказівка користувача): без галочки згоди кнопка «Надіслати заявку» не натискається.
+    var sb = form.querySelector('.submit'); if (sb && !formBusy) { sb.disabled = !v.consent; }
     var gn = form.querySelector('[data-gfr-need]');
     if (gn) { gn.textContent = c.ct ? 'Перед обстеженням з контрастом потрібні аналізи на креатинін, сечовину і гемоглобін, не старші 14 днів.' : 'Перед обстеженням з контрастом потрібні аналізи на креатинін і сечовину, не старші 14 днів.'; }
     saveDraft(v);
