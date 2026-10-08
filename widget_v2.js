@@ -119,6 +119,7 @@
     + '.f h4,.done h4{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#7a8594;margin-top:8px}'
     + '.fld .l{font-size:13.5px;font-weight:600;color:#2b3440;margin-bottom:6px}'
     + '.fld .opt{font-weight:400;color:#9aa4b1;font-size:12px}'
+    + '.f input[type=date]{cursor:pointer}'
     + '.f input[type=text],.f input[type=tel],.f input[type=date],.f input[type=time],.f select{width:100%;border:1.5px solid #d5dae2;border-radius:12px;padding:11px 13px;font:inherit;font-size:15px;background:#fff;outline:none;color:#1c2430;-webkit-appearance:none;appearance:none}'
     + '.two{display:flex;gap:10px}.two .fld{flex:1;min-width:0}'
     // 07.10: атрибут hidden має перемагати display:flex рядків (.swr, .two), інакше залежні рядки й кроки видно завжди.
@@ -792,6 +793,12 @@
       if (!nb) { return; }
       form.querySelector('input[name="tg_done"]').value = '1';
       applyVisibility(form);
+    });
+    // 08.10 (вказівка користувача): календар відкривається від натискання будь-де в полі дати, а не лише на значок.
+    form.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || t.type !== 'date' || typeof t.showPicker !== 'function') { return; }
+      try { t.showPicker(); } catch (er) {}
     });
     form.addEventListener('focusout', function (e) {
       var n = e.target && e.target.name;
