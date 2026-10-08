@@ -23,7 +23,7 @@
   var GREETING = 'Доброго дня! Медичний центр Абсолют, мене звати Оля, я віртуальний асистент реєстратури. Листування зберігається і передається реєстратурі. Скажіть, будь ласка, чим можу допомогти?';
   // Найчастіші запити з аналізу вхідних дзвінків 25-29.09, з тих, що чат закриває сам.
   var START_BUTTONS = ['Записатися на обстеження', 'Скільки коштує', 'Чи потрібне скерування', 'Які аналізи потрібні', 'Як до вас доїхати'];
-  var FORM_BUTTON = 'Заповнити форму запису';
+  var FORM_BUTTON = 'Швидкий запис';
   var CONSENT = 'Надсилаючи повідомлення, ви погоджуєтесь з обробкою персональних даних.';
 
   var state = load();
@@ -112,6 +112,7 @@
     + '.send:disabled{opacity:.5;cursor:default}'
     + '.send svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}'
     + '.consent{font-size:9.5px;color:#a3acb8;margin-top:7px;line-height:1.3;text-align:center;white-space:nowrap;overflow:hidden;letter-spacing:-.01em}'
+    + '@media (max-width:380px){.consent{white-space:normal}}'
     + '.restart{align-self:center;margin-top:4px;border:0;background:transparent;color:' + COLOR + ';text-decoration:underline;cursor:pointer;font:inherit;font-size:14px}'
     /* форма */
     + '.f{display:flex;flex-direction:column;gap:12px;font-size:14px}'
@@ -209,7 +210,7 @@
     + '<div class="am-head"><div class="av">' + ICON_CHAT + '<i></i></div><div class="tt"><div class="t">' + esc(BRAND) + '</div><div class="s">Онлайн-чат</div></div>'
     + '<button class="sw" type="button"></button><button class="rs" type="button" aria-label="Почати спочатку" title="Почати спочатку">' + ICON_RESET + '</button><button class="x" aria-label="Закрити">×</button></div>'
     + '<div class="am-body"></div>'
-    + '<div class="am-foot"><div class="row"><textarea rows="1" placeholder="Надіслати повідомлення..." aria-label="Повідомлення"></textarea>'
+    + '<div class="am-foot"><div class="row"><textarea rows="1" maxlength="1000" placeholder="Надіслати повідомлення..." aria-label="Повідомлення"></textarea>'
     + '<button class="send" aria-label="Надіслати"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></div>'
     + '<div class="consent">' + esc(CONSENT) + '</div></div>'
     + '</div></div>';
@@ -233,6 +234,7 @@
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(ta.value); }
   });
   ta.addEventListener('input', function () { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 110) + 'px'; });
+  root.querySelector('.am-panel').addEventListener('keydown', function (e) { if (e.key === 'Escape') { setOpen(false); } });
 
   // Телефон (ширина до 640px): чат на весь екран тримається рівно у видимій області (visualViewport). Коли на iPhone
   // відкривається клавіатура або ховається панель браузера, шапка і поле вводу не «пливуть», а сайт під чатом не прокручується.
@@ -263,7 +265,8 @@
     state.open = v; save();
     wrap.classList.toggle('open', v);
     fitPhone();
-    if (v) { render(); if (state.mode === 'chat') { setTimeout(function () { ta.focus(); }, 50); } }
+    if (v) { render(); if (state.mode === 'chat') { setTimeout(function () { focusInput(false); }, 50); } }
+    else { var lb = root.querySelector(state.mode === 'form' ? '.am-pill' : '.am-btn'); if (lb) { lb.focus(); } }
   }
 
   // Кнопка «Почати спочатку»: чат, форма і все збережене в sessionStorage.
@@ -285,7 +288,7 @@
     ta.value = ''; ta.style.height = 'auto';
     save(); render();
     body.scrollTop = 0;
-    if (m === 'chat') { setTimeout(function () { ta.focus(); }, 50); }
+    if (m === 'chat') { setTimeout(function () { focusInput(false); }, 50); }
   }
 
   /* ---------- рендер ---------- */
@@ -293,9 +296,9 @@
     var isChat = state.mode === 'chat';
     wrap.classList.toggle('fm', !isChat);
     head.querySelector('.t').textContent = isChat ? BRAND : 'Швидкий запис';
-    head.querySelector('.s').textContent = isChat ? 'Онлайн-чат' : 'Оператор передзвонить і підтвердить час';
+    head.querySelector('.s').textContent = isChat ? 'Онлайн-чат' : 'Оператор передзвонить';
     head.querySelector('.av').innerHTML = (isChat ? ICON_CHAT : ICON_FORM) + '<i></i>';
-    sw.textContent = isChat ? 'Форма запису' : 'Чат з Олею';
+    sw.textContent = isChat ? 'Швидкий запис' : 'Чат з Олею';
     foot.hidden = !isChat;
     body.innerHTML = '';
     if (isChat) { renderChat(); } else { renderForm(); }
@@ -332,7 +335,10 @@
     if (offerNew) {
       var r = document.createElement('button'); r.className = 'restart'; r.type = 'button';
       r.textContent = 'Розпочати нову розмову';
-      r.addEventListener('click', function () { var m = state.mode; state = fresh(); state.open = true; state.mode = m; save(); render(); });
+      r.addEventListener('click', function () {
+        var m = state.mode; resetEpoch++; busy = false; ta.value = ''; ta.style.height = 'auto';
+        state = fresh(); state.open = true; state.mode = m; save(); render(); focusInput(false);
+      });
       body.appendChild(r);
     }
     ta.disabled = busy; sendBtn.disabled = busy;
@@ -377,19 +383,24 @@
     body.appendChild(typing); scroll();
 
     var ep = resetEpoch;
+    // 08.10: без тайм-ауту пацієнт міг дивитись на «три крапки» хвилинами; бюджет ходу чату 2.0 — 90 с.
+    var ac = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = ac ? setTimeout(function () { ac.abort(); }, 95000) : null;
     // closed: завершальний статус, з яким заявку вже передано (25.09): сервер не шле другу заявку, коли пацієнт просто пише далі.
     // anketa: модальність, ділянка, контраст, вік, вага, стать, ім'я з попередньої відповіді (25.09): з них сервер рахує ескалацію й анкету.
     // chas: бажаний час з попередньої відповіді (29.09), возиться так само, як anketa: чіткого запису немає, час перевіряє двигун 2.0.
     var payload = { session_id: state.session_id, site: SITE, page: location.href, messages: state.messages.slice(-60), escalated: !!state.escalated, chas: state.chas || {}, handoff: !!state.handoff, closed: state.closed || '', anketa: state.anketa || {} };
-    fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac ? ac.signal : undefined })
       .then(function (r) { if (!r.ok) { var he = new Error('HTTP ' + r.status); he.server = true; throw he; } return r.json(); })
       .then(function (d) {
+        if (timer) { clearTimeout(timer); }
         if (ep !== resetEpoch) { return; }
         if (!d || typeof d.reply !== 'string') { var be = new Error('bad response'); be.server = true; throw be; }
         // Діалог в оператора або передано оператору: Оля мовчить, відповідь оператора прийде опитуванням.
         if (typeof d.taken === 'boolean') { setTaken(d.taken); }
         if (d.reply) { state.messages.push({ role: 'assistant', content: d.reply }); }
-        state.buttons = Array.isArray(d.buttons) ? d.buttons.slice(0, 6).map(function (b) { return String(b).slice(0, 40); }) : [];
+        state.buttons = Array.isArray(d.buttons) ? d.buttons.map(function (b) { return String(b == null ? '' : b).trim().slice(0, 40); })
+          .filter(function (b, i, a) { return b && a.indexOf(b) === i; }).slice(0, 6) : [];
         if (!d.operator) { state.status = d.status && d.status !== 'in_progress' ? d.status : 'in_progress'; }
         if (typeof d.closed === 'string') { state.closed = d.closed; }
         if (d.anketa && typeof d.anketa === 'object' && !Array.isArray(d.anketa)) { state.anketa = d.anketa; }
@@ -404,12 +415,13 @@
         busy = false; save(); render(); focusInput(keepFocus);
       })
       .catch(function (err) {
+        if (timer) { clearTimeout(timer); }
         if (ep !== resetEpoch) { return; }
         state.messages.pop();
         state.buttons = prevButtons;
         busy = false; save(); render();
-        add('err', err && err.server
-          ? 'Технічна помилка на нашому боці. Спробуйте, будь ласка, ще раз за хвилину.'
+        add('err', err && err.name === 'AbortError' ? 'Відповідь затримується. Надішліть, будь ласка, повідомлення ще раз.'
+          : err && err.server ? 'Технічна помилка на нашому боці. Спробуйте, будь ласка, ще раз за хвилину.'
           : 'Не вдалося надіслати повідомлення. Перевірте інтернет і спробуйте ще раз.');
         if (!ta.value) { ta.value = text; }
         focusInput(keepFocus); scroll();
@@ -421,8 +433,14 @@
   var formBusy = false;
   var formPreferred = '';   // бажаний час, з яким пішла заявка: показуємо його на екрані подяки
 
-  function loadDraft() { try { return JSON.parse(sessionStorage.getItem(FORM_KEY) || '{}') || {}; } catch (e) { return {}; } }
-  function saveDraft(v) { try { sessionStorage.setItem(FORM_KEY, JSON.stringify(v)); } catch (e) {} }
+  function loadDraft() {
+    try {
+      var d = JSON.parse(sessionStorage.getItem(FORM_KEY) || '{}') || {};
+      if (d.__t && Date.now() - d.__t > TTL_MS) { return {}; }
+      delete d.__t; return d;
+    } catch (e) { return {}; }
+  }
+  function saveDraft(v) { try { v.__t = Date.now(); sessionStorage.setItem(FORM_KEY, JSON.stringify(v)); delete v.__t; } catch (e) {} }
 
   // ZONES-BEGIN
 // Згенеровано chat_widget/forma_zony.py з прайсу Олі 2.0 (exams.json). Не правити руками.
@@ -464,7 +482,7 @@
   // попереднього; перемикачі стану здоров'я — компактні мітки всі разом із кнопкою «Далі», щоб пропустити їх одним махом.
   function formHtml() {
     return '<form class="f" novalidate>'
-      + '<div class="note103">Якщо це невідкладний стан (ознаки інсульту, тяжка травма, гострий біль у животі, кровотеча), не заповнюйте форму, а телефонуйте 103.</div>'
+      + '<div class="note103">Невідкладний стан (інсульт, тяжка травма, гострий біль у животі, кровотеча) — телефонуйте 103, а не заповнюйте форму.</div>'
       + '<h4 data-step="1">Обстеження</h4>'
       + fld('modality', 'Яке обстеження', chips('modality', ['КТ', 'МРТ'], 'seg'), '', false, 1)
       + fld('zone', 'Що обстежуємо', '<div data-zone-box></div><div class="sub2" data-zone-sub hidden></div>', '', false, 2)
@@ -484,7 +502,7 @@
           swRow('pacemaker', 'Кардіостимулятор', 'mri') + swRow('defibrillator', 'Дефібрилятор', 'mri') + swRow('neurostimulator', 'Нейростимулятор', 'mri'))
       + grp('Метал в тілі', 'mri',
           swRow('stents', 'Стенти', 'mri') + swRow('joint_prosthesis', 'Суглобові протези', 'mri') + swRow('metal_fragments', 'Металеві осколки', 'mri')
-          + swRow('implants', 'Інші металеві імпланти або пластини', 'mri') + swRow('implants_docs', 'На імпланти є паспорт чи сертифікат про сумісність із магнітним полем, або довідка лікаря', 'mri implants', true))
+          + swRow('implants', 'Інші металеві імпланти або пластини', 'mri') + swRow('implants_docs', 'Є паспорт або сертифікат на імпланти чи довідка лікаря', 'mri implants', true))
       + grp('Очі', 'mri',
           swRow('lens', 'Імплантований кришталик ока', 'mri') + swRow('lens_recent', 'Операція на оці менше 3 місяців тому', 'mri lens', true))
       + grp('Під час обстеження', 'mri',
@@ -501,7 +519,7 @@
         + chips('gfr', ['Немає', 'Є, ШКФ у нормі', 'Є, ШКФ низька'], 'seg') + '<div class="hint" data-gfr-hint></div>', 'contrast', false, 9)
       + fld('referral', 'Скерування від лікаря', chips('referral', ['Є', 'Немає'], 'seg'), 'referral', false, 10)
       + '<h4 data-step="11">Коли зручно</h4>'
-      + fld('preferred_date', 'Бажаний день', '<input type="date" name="preferred_date" min="' + dayISO(0) + '" max="' + dayISO(60) + '">', '', false, 11)
+      + fld('preferred_date', 'Бажаний день', '<input type="date" name="preferred_date" min="' + dayISO(0) + '" max="' + dayISO(60) + '"><div class="hint" data-day-name></div>', '', false, 11)
       + fld('preferred_part', 'Бажана частина дня', chips('day_part', DAY_PARTS)
         + '<div class="tpick" hidden><div class="tl">Точна година <span class="opt">необов\'язково</span></div><div class="tgrid" data-times></div></div>'
         + '<input type="hidden" name="exact_time">'
@@ -514,7 +532,6 @@
       + fld('phone', 'Телефон', '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="+380 __ ___ __ __" maxlength="19">', '', false, 14)
       + fld('consent', '', '<label class="chk"><input type="checkbox" name="consent"><span>Погоджуюсь на обробку персональних даних для запису на обстеження</span></label>', '', false, 15)
       + '<button type="submit" class="submit" data-step="15">Надіслати заявку</button>'
-      + '<div class="hint" style="text-align:center" data-step="15">Оператор передзвонить і підтвердить час</div>'
       + '</form>';
   }
 
@@ -540,7 +557,7 @@
       knee: /колін/.test(z), prostate: /простат/.test(z), liver: /печінк/.test(z),
       implants: !!(v.implants || v.stents || v.joint_prosthesis), lens: !!v.lens, biopsy: !!v.biopsy,
       gfr_has: v.gfr === 'Є, ШКФ у нормі' || v.gfr === 'Є, ШКФ низька',
-      referral: ct || (mri && (!!v.pregnancy || (!!v.lactation && contrast))),
+      referral: ct || (mri && ((!!v.pregnancy && preg) || (!!v.lactation && contrast))),
       // Тумблери стану потрібні, лише коли є хоч один пункт анкети Олі для цього обстеження.
       tg_any: mri || contrast || preg
     };
@@ -617,6 +634,11 @@
       if (st && st > reached) { show = false; }
       el.hidden = !show;
     });
+    // 08.10: тумблер, схований умовою (не кроком), знімається — інакше «Вагітність» з КТ їхала б у заявку МРТ.
+    form.querySelectorAll('.swr[data-if]').forEach(function (l) {
+      var i = l.querySelector('input');
+      if (i && i.checked && !l.getAttribute('data-if').split(/\s+/).every(function (k) { return c[k]; })) { i.checked = false; v[i.name] = false; }
+    });
     form.querySelectorAll('.tg').forEach(function (l) { var i = l.querySelector('input'); l.classList.toggle('on', !!(i && i.checked)); });
     // Група тумблерів без жодного видимого рядка — ховаємо (напр. «Стан пацієнта» для КТ без контрасту у 60 років).
     form.querySelectorAll('.grp').forEach(function (g) {
@@ -635,6 +657,8 @@
     // підказка до ШКФ залежно від модальності
     var gh = form.querySelector('[data-gfr-hint]');
     if (gh) { gh.textContent = c.ct ? 'Низька для КТ: 52 мл/хв і менше' : c.mri ? 'Низька для МРТ: 32 мл/хв і менше' : ''; }
+    var dn = form.querySelector('[data-day-name]');
+    if (dn) { var dd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.preferred_date || ''); dn.textContent = dd ? ['неділя', 'понеділок', 'вівторок', 'середа', 'четвер', "п'ятниця", 'субота'][new Date(+dd[1], +dd[2] - 1, +dd[3], 12).getDay()] : ''; }
     var gn = form.querySelector('[data-gfr-need]');
     if (gn) { gn.textContent = c.ct ? 'Перед обстеженням з контрастом потрібні аналізи на креатинін, сечовину і гемоглобін, не старші 14 днів.' : 'Перед обстеженням з контрастом потрібні аналізи на креатинін і сечовину, не старші 14 днів.'; }
     saveDraft(v);
@@ -671,8 +695,7 @@
     });
     // Підказка під апаратом: правило з ділянки (лише один апарат) або адреса обраного; правило з обхвату — окремою нотаткою.
     var zoneOnly = r && r.avail.length === 1;
-    hint.textContent = zoneOnly ? 'Це обстеження робимо тільки на апараті ' + r.avail[0] + ', ' + ADRESA[r.avail[0]] + '.'
-      : (nv ? 'Апарат ' + nv + ': ' + ADRESA[nv] + '.' : 'Не впевнені — пропустіть, апарат підбере оператор.');
+    hint.textContent = zoneOnly ? r.say : (nv ? 'Апарат ' + nv + ': ' + ADRESA[nv] + '.' : 'Не впевнені — пропустіть, апарат підбере оператор.');
     var fromGirth = r && (r.op || (r.fix && !zoneOnly));
     note.hidden = !fromGirth;
     note.textContent = fromGirth ? r.say : '';
@@ -684,9 +707,10 @@
     var n = form.querySelector('[data-age-note]');
     if (!n) { return; }
     var a = /^\d{1,3}$/.test(v.age || '') && ((v.age || '').length >= 2 || ageCommitted) ? +v.age : null;
-    n.hidden = a === null || a > 17;
-    n.textContent = a === null ? '' : a < 17 ? 'Центр проводить обстеження з вісімнадцяти років.' : a === 17 ? 'Для сімнадцяти років можливість обстеження уточнить оператор.' : '';
-    n.className = a !== null && a < 17 ? 'agestop' : 'apnote';
+    n.hidden = a === null || (a > 17 && a <= 120);
+    // 2.2 (ревю 08.10): вік понад 120 — теж підказка, інакше форма мовчки «стоїть».
+    n.textContent = a === null ? '' : a > 120 ? 'Перевірте вік.' : a < 17 ? 'Центр проводить обстеження з 18 років.' : a === 17 ? 'Для 17 років можливість обстеження уточнить оператор.' : '';
+    n.className = a !== null && (a < 17 || a > 120) ? 'agestop' : 'apnote';
   }
   function setChips(c, value) {
     if (!c) { return; }
@@ -717,6 +741,9 @@
   function renderZoneSub(form, group) {
     var box = form.querySelector('[data-zone-sub]');
     var mod = (form.querySelector('.chips[data-chips="modality"]') || { getAttribute: function () { return ''; } }).getAttribute('data-value') || '';
+    // Той самий метод і група — список уже на екрані, не перемальовуємо (інакше губиться обрана ділянка, 08.10).
+    if (box.getAttribute('data-for') === mod + '|' + (group || '')) { return; }
+    box.setAttribute('data-for', mod + '|' + (group || ''));
     var g = zoneGroups(mod).filter(function (x) { return x[0] === group; })[0];
     var items = g ? g[1].map(function (it) { return it[0]; }) : [];
     box.innerHTML = items.length ? '<div class="sl">Оберіть ділянку в групі <b>' + esc(group) + '</b></div>' + chips('zone_item', items) : '';
@@ -757,7 +784,7 @@
     if (!v.modality) { e.modality = 'Оберіть КТ або МРТ'; }
     if (!zoneText(v)) { e.zone = v.zone_group ? 'Оберіть ділянку' : 'Оберіть групу, потім ділянку'; }
     if (!v.contrast) { e.contrast = 'Оберіть, з контрастом чи без'; }
-    if (!v.age) { e.age = 'Вкажіть вік'; } else if (+v.age > 120) { e.age = 'Перевірте вік'; } else if (+v.age < 17) { e.age = 'Центр проводить обстеження з вісімнадцяти років.'; }
+    if (!v.age) { e.age = 'Вкажіть вік'; } else if (+v.age > 120) { e.age = 'Перевірте вік'; } else if (+v.age < 17) { e.age = 'Центр проводить обстеження з 18 років.'; }
     if (!v.weight) { e.weight = 'Оберіть вагу'; }
     if (c.girth_q && !v.girth) { e.girth = 'Оберіть обхват'; }
     if (c.mri && c.knee && !v.knee) { e.knee = 'Оберіть обхват коліна'; }
@@ -815,12 +842,16 @@
       var c = b.parentNode;
       var cur = c.getAttribute('data-value');
       var val = b.getAttribute('data-val');
-      setChips(c, c.classList.contains('seg') ? val : (cur === val ? '' : val));
+      var nm = c.getAttribute('data-chips');
+      // 2.16: повторне натискання на обрану групу ділянок не знімає вибір (люди тиснуть «щоб розгорнути»).
+      setChips(c, c.classList.contains('seg') || nm === 'zone_group' ? val : (cur === val ? '' : val));
+      // 2.15: змінився метод чи контраст — у блоці тумблерів можуть з'явитись нові рядки, тож «Далі» треба натиснути знову.
+      if ((nm === 'modality' || nm === 'contrast') && cur !== val) { var tgd = form.querySelector('input[name="tg_done"]'); if (tgd) { tgd.value = ''; } }
       applyVisibility(form);
     });
     form.addEventListener('input', function (e) {
       var t = e.target;
-      if (t.name === 'phone') { var p = t.selectionEnd === t.value.length; t.value = formatPhone(t.value); }
+      if (t.name === 'phone') { t.value = formatPhone(t.value); }
       if (t.name === 'age') { t.value = t.value.replace(/\D/g, '').slice(0, 3); }
       var f = t.closest('.fld'); if (f && t.value) { clearErr(f); }
       applyVisibility(form);
@@ -881,7 +912,7 @@
   }
 
   // Апарат, з яким іде заявка, і код позиції прайсу Олі (КТ — код ділянки; МРТ — код на обраному апараті, без апарата — порожньо).
-  function apSent(form, v) { var r = aparatRule(v, conds(v)); return r && r.op ? '' : (v.apparatus || ''); }
+  function apSent(form, v) { var c = conds(v); if (!c.mri) { return ''; } var r = aparatRule(v, c); return r && r.op ? '' : (v.apparatus || ''); }
   function apOp(form, v) { var r = aparatRule(v, conds(v)); return !!(r && r.op); }
   function examCode(form, v) {
     var zi = zoneInfo(v);
@@ -893,10 +924,12 @@
   function examCodes(v) { var zi = zoneInfo(v); return zi ? zi.slice(1).filter(Boolean).join(',') : ''; }
   function renderDone() {
     var d = formDone;
-    var h = '<div class="done"><div class="ok"><b>Дякуємо' + (d.name ? ', ' + esc(d.name) : '') + '. Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
-    // Чіткого запису немає: показуємо той бажаний час, з яким пішла заявка.
+    var h = '<div class="done"><div class="ok"><b>Дякуємо' + (d.name ? ', ' + esc(d.name) : '') + '! Заявку передано реєстратурі.</b>' + esc(d.closing || '') + '</div>';
+    // Чіткого запису немає: показуємо той бажаний час, з яким пішла заявка. 08.10: двигун часу відхилив день чи годину
+    // (chas_ok false, chas_reason — його слова) — пацієнт бачить причину, а не «оператор підтвердить».
     var pref = d.preferred_time || formPreferred;
-    if (pref) { h += '<div class="booked">Бажаний час: <b>' + esc(pref) + '</b>. Оператор підтвердить точний час і передзвонить.</div>'; }
+    if (pref && d.chas_ok === false) { h += '<div class="booked">Бажаний час: <b>' + esc(pref) + '</b>' + (d.chas_reason ? ' — ' + esc(d.chas_reason) : '') + ' Оператор запропонує інший час.</div>'; }
+    else if (pref) { h += '<div class="booked">Бажаний час: <b>' + esc(pref) + '</b>.</div>'; }
     (d.notes || []).forEach(function (n) { h += '<p>' + esc(n) + '</p>'; });
     if ((d.preparation || []).length) { h += '<h4>Підготовка</h4>'; }
     (d.preparation || []).forEach(function (p) { h += '<p>' + esc(p) + '</p>'; });
@@ -908,7 +941,7 @@
 
   function mount() {
     document.body.appendChild(host);
-    if (state.open) { setOpen(true); }
+    if (state.open && !isPhone()) { setOpen(true); } else if (state.open) { state.open = false; save(); }
   }
   if (document.body) { mount(); } else { document.addEventListener('DOMContentLoaded', mount); }
 })();
