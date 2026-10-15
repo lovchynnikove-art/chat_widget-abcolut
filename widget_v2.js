@@ -595,7 +595,7 @@
       !!v.modality,
       !!zoneText(v),
       !!v.contrast,
-      /^\d{1,3}$/.test(v.age || '') && age >= 17 && age <= 120 && ((v.age || '').length >= 2 || ageCommitted),
+      /^\d{1,3}$/.test(v.age || '') && age <= 120 && ((v.age || '').length >= 2 || ageCommitted),
       !!v.weight,
       !c.girth_q || !!v.girth,
       !(c.mri && c.knee) || !!v.knee,
@@ -707,15 +707,16 @@
     if (fromGirth) { hint.textContent = ''; }   // адреса вже є у фразі про апарат
     if (c.mri) { v.apparatus = nv; }
   }
-  // Вік (rules.json vik_min 18, vik_operator 17; фрази Олі dity_molodshi, dity_simnadtsiat).
+  // Вік (rules.json vik_min 18, vik_operator 17). 15.10: до 18 — фраза Олі з анкети (H2_DITY_ZAPYS), без зупинки.
   function applyAge(form, v) {
     var n = form.querySelector('[data-age-note]');
     if (!n) { return; }
     var a = /^\d{1,3}$/.test(v.age || '') && ((v.age || '').length >= 2 || ageCommitted) ? +v.age : null;
     n.hidden = a === null || (a > 17 && a <= 120);
     // 2.2 (ревю 08.10): вік понад 120 — теж підказка, інакше форма мовчки «стоїть».
-    n.textContent = a === null ? '' : a > 120 ? 'Перевірте вік.' : a < 17 ? 'Центр проводить обстеження з 18 років.' : a === 17 ? 'Для 17 років можливість обстеження уточнить оператор.' : '';
-    n.className = a !== null && (a < 17 || a > 120) ? 'agestop' : 'apnote';
+    // 15.10 (файл клієнта, як голос): до 18 — не зупинка, а фраза Олі про запис дітей через оператора; форма йде далі.
+    n.textContent = a === null ? '' : a > 120 ? 'Перевірте вік.' : 'Дітей до 18 років ми записуємо лише через оператора: я передам ваші дані, він з вами все узгодить.';
+    n.className = a !== null && a > 120 ? 'agestop' : 'apnote';
   }
   function setChips(c, value) {
     if (!c) { return; }
@@ -792,7 +793,7 @@
     if (!v.modality) { e.modality = 'Оберіть КТ або МРТ'; }
     if (!zoneText(v)) { e.zone = v.zone_group ? 'Оберіть ділянку' : 'Оберіть групу, потім ділянку'; }
     if (!v.contrast) { e.contrast = 'Оберіть, з контрастом чи без'; }
-    if (!v.age) { e.age = 'Вкажіть вік'; } else if (+v.age > 120) { e.age = 'Перевірте вік'; } else if (+v.age < 17) { e.age = 'Центр проводить обстеження з 18 років.'; }
+    if (!v.age) { e.age = 'Вкажіть вік'; } else if (+v.age > 120) { e.age = 'Перевірте вік'; }
     if (!v.weight) { e.weight = 'Оберіть вагу'; }
     if (c.girth_q && !v.girth) { e.girth = 'Оберіть обхват'; }
     if (c.mri && c.knee && !v.knee) { e.knee = 'Оберіть обхват коліна'; }
